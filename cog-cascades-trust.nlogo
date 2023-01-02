@@ -461,7 +461,7 @@ to step
       let c self
       ask out-link-neighbors [
        ; show (word "Citizen " self " receiving message " (agent-brain-malleable-values c) " from citizen " c)
-        receive-message self c (agent-brain-malleable-values c) 0
+        receive-message -1 self c (agent-brain-malleable-values c) 0
       ]
     ]
   ]
@@ -487,9 +487,6 @@ to institutions-send-messages
   ]
   if institution-tactic = "appeal-mode" [
     institutions-appeal-mode
-  ]
-  if institution-tactic = "max-reach-no-chain" [
-    institutions-max-reach-no-chain
   ]
 end
 
@@ -554,88 +551,6 @@ to institutions-appeal-mode
   ]
 end
 
-to institutions-max-reach-no-chain
-  ask medias [
-    ifelse empty? messages-sent [
-      let message-val dict-value brain "A"
-      repeat message-repeats [
-        send-media-message-to-subscribers self (list (list "A" message-val))
-      ]
-    ] [
-      ;; This gets a list of messages b/c messages-sent = [ [message-id [ message ]] [message-id [ message ] ]] ... ]
-      let last-message-obj (last messages-sent)
-      let last-message-id item 0 last-message-obj
-      let last-message item 1 last-message-obj
-
-      show self
-      show last-message
-      let believed-cits citizens with [
-        (dict-value messages-believed (ticks - 1)) != -1 and
-        member? last-message-id (dict-value messages-believed (ticks - 1))
-      ]
-      show believed-cits
-      let heard-not-bel-cits citizens with [
-        (dict-value messages-heard (ticks - 1)) != -1 and member? last-message-id (dict-value messages-heard (ticks - 1)) and
-        (dict-value messages-believed (ticks - 1)) != -1 and not member? last-message-id (dict-value messages-believed (ticks - 1))
-      ]
-      show heard-not-bel-cits
-
-      if empty? sort believed-cits and empty? sort heard-not-bel-cits [
-        let message-val dict-value brain "A"
-        repeat message-repeats [
-          send-media-message-to-subscribers self (list (list "A" message-val))
-        ]
-      ]
-      ifelse empty? sort heard-not-bel-cits [
-        repeat message-repeats [
-          send-media-message-to-subscribers self last-message
-        ]
-      ] [
-        if spread-type = "simple" [
-          ; Doesn't seem to be much you can do here... it's all random
-        ]
-        if spread-type = "complex" [
-
-        ]
-        if spread-type = "cognitive" [
-          ;; TODO: Come up with some other procedure for this... in multi-dimensional belief space this would be too much
-          let bel-min (item 1 last-message)
-          let bel-max (item 1 last-message)
-          if not empty? sort believed-cits [
-            set bel-min (min [dict-value brain "A"] of believed-cits)
-            set bel-max (max [dict-value brain "A"] of believed-cits)
-          ]
-          let heard-min (item 1 last-message)
-          let heard-max (item 1 last-message)
-          if not empty? sort heard-not-bel-cits [
-            set heard-min (min [dict-value brain "A"] of heard-not-bel-cits)
-            set heard-max (max [dict-value brain "A"] of heard-not-bel-cits)
-          ]
-          let potential-messages (range (min (list bel-min heard-min)) (max (list bel-max heard-max) + 1))
-          show potential-messages
-
-          ; Test all message value expected # of agents believing it
-          let best-message-val -1
-          let best-expected-bels -1
-          foreach potential-messages [ message-val ->
-            let believed-ps map [ cit -> cognitive-contagion-p cit last-message ] (sort believed-cits)
-            let expected-beliefs sum believed-ps
-            if expected-beliefs > best-expected-bels [
-              set best-expected-bels expected-beliefs
-              set best-message-val message-val
-            ]
-          ]
-
-          show best-message-val
-          repeat message-repeats [
-            send-media-message-to-subscribers self (list (list "A" best-message-val))
-          ]
-        ]
-      ]
-    ]
-  ]
-end
-
 to update-agents
   ask citizens [
     update-citizen
@@ -665,7 +580,7 @@ to send-media-message-to-subscribers [ m message ]
     set messages-sent (lput (list mid message) messages-sent)
     ask my-subscribers [
       ask other-end [
-        receive-message self m message mid
+        receive-message m self m message mid
       ]
     ]
     set cur-message-id (cur-message-id + 1)
@@ -702,14 +617,16 @@ end
 ;; Have a citizen agent receive a message: hear it, either believe it or not, and subsequently either
 ;; share it or not.
 ;;
+;; @param source - The original institutional agent who sent the message
 ;; @param cit - The citizen agent who is receiving the message.
 ;; @param sender - The originator of the message (CURRENTLY NOT USED -- SHOULD BE REMOVED)
 ;; @param message - The message itself.
 ;; @param message-id - The unique ID of the message (used so the citizen agent does not duplicate shares)
-to receive-message [ cit sender message message-id ]
+to receive-message [ source cit sender message message-id ]
   ask cit [
     if not (heard-message? self ticks message-id) [
       hear-message self message-id message
+      show (word "message " message-id " heard from source " source " from sender " sender)
 
       if spread-type = "cognitive" [
 
@@ -722,7 +639,7 @@ to receive-message [ cit sender message message-id ]
           believe-message self message-id message
 
           ask social-friend-neighbors [
-            receive-message self cit message message-id
+            receive-message source self cit message message-id
           ]
         ]
         update-citizen
@@ -736,7 +653,7 @@ to receive-message [ cit sender message message-id ]
           set brain (believe-message-py brain message)
           believe-message self message-id message
           ask social-friend-neighbors [
-            receive-message self cit message message-id
+            receive-message source self cit message message-id
           ]
         ]
       ]
@@ -761,7 +678,7 @@ to receive-message [ cit sender message message-id ]
           believe-message self message-id message
           ;; Unsure if this sharing behavior is correct...
           ask social-friend-neighbors [
-            receive-message self cit message message-id
+            receive-message source self cit message message-id
           ]
         ]
       ]
@@ -1877,7 +1794,7 @@ N
 N
 0
 1000
-100.0
+30.0
 10
 1
 NIL
@@ -1916,10 +1833,10 @@ Cognitive State
 1
 
 PLOT
-1118
-675
-1488
-825
+730
+490
+1100
+640
 Social Friend Degree of Nodes
 NIL
 NIL
@@ -2481,28 +2398,10 @@ message-file
 2
 
 PLOT
-732
-320
-1106
-476
-homophily
-NIL
-NIL
-0.0
-10.0
-0.0
-1.0
-true
-false
-"" ""
-PENS
-"0" 1.0 0 -16777216 true "" "plot 1 / (1 + (item 0 graph-homophily))"
-
-PLOT
-733
-483
-1106
-638
+729
+325
+1102
+480
 polarization
 NIL
 NIL
@@ -2515,24 +2414,6 @@ false
 "" ""
 PENS
 "0" 1.0 0 -16777216 true "" "plot graph-polarization \"A\""
-
-PLOT
-733
-647
-1108
-812
-disagreement
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"0" 1.0 0 -16777216 true "" "plot graph-disagreement \"A\""
 
 TEXTBOX
 256
@@ -2664,24 +2545,6 @@ Predetermined parameters
 0.0
 1
 
-PLOT
-1119
-456
-1497
-670
-First degree power distribution
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\n\n;let power-dist agents-power \"A\"\n;let powers map [ agent -> (item 1 (item 0 agent)) ] power-dist \n;set-plot-x-range 0 (max powers)\n\n;histogram powers"
-
 CHOOSER
 28
 509
@@ -2752,7 +2615,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-20.0
+1.0
 1
 1
 NIL
@@ -2875,10 +2738,10 @@ graph-homophily?
 -1000
 
 PLOT
-1534
-537
-1907
-779
+1168
+422
+1541
+664
 chi-sq-citizens-media
 time
 p-value
