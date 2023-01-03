@@ -40,6 +40,8 @@ citizens-own [
   brain
   messages-heard
   messages-believed
+  ;; Trust
+  media-messages-memory
 ]
 
 medias-own [
@@ -101,6 +103,7 @@ to setup
 
   ifelse not load-graph? [
     create-agents
+    initialize-agents
     connect-agents
     connect-media
   ] [
@@ -175,6 +178,15 @@ to create-citizenz
     set size 0.5
     setxy random-xcor random-ycor
     set id id + 1
+  ]
+end
+
+;; Any of the code that comes after creation of agents but before
+;; connection of them
+to initialize-agents
+  ask citizens [
+    let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
+    set media-messages-memory map [ i -> list i (map [ b -> list b [] ] all-beliefs) ] (sort medias)
   ]
 end
 
@@ -626,7 +638,9 @@ to receive-message [ source cit sender message message-id ]
   ask cit [
     if not (heard-message? self ticks message-id) [
       hear-message self message-id message
-      show (word "message " message-id " heard from source " source " from sender " sender)
+;      show (word "message " message-id " heard from source " source " from sender " sender)
+
+      add-message-to-memory self source message
 
       if spread-type = "cognitive" [
 
@@ -683,6 +697,28 @@ to receive-message [ source cit sender message message-id ]
         ]
       ]
     ]
+  ]
+end
+
+;; Have a citizen commit a media message to memory
+;;
+;; @param cit - The citizen
+;; @param source - The original media source of the message
+;; @param message - The content of the message
+to add-message-to-memory [ cit source message ]
+  ask cit [
+    let memory-by-belief dict-value media-messages-memory source
+    ;; TODO: Make this not hardcoded as "A"
+    let belief dict-value message "A"
+    let belief-key (word "Attributes." "A")
+    let memory dict-value memory-by-belief belief-key
+
+    set memory (lput belief memory)
+    if length memory > cit-memory-len [
+      set memory but-first memory
+    ]
+    set memory-by-belief (replace-dict-item memory-by-belief belief-key memory)
+    set media-messages-memory (replace-dict-item media-messages-memory source memory-by-belief)
   ]
 end
 
@@ -1266,6 +1302,18 @@ end
 ; HELPER PROCS
 ;;;;;;;;;;;;;;;
 
+;; Perform a set union of two lists
+;;
+;; @param lists - The lists to union
+to-report set-merge-lists [ lists ]
+  let merged []
+  foreach lists [ l ->
+    foreach l [ element -> set merged (lput element merged) ]
+  ]
+  set merged remove-duplicates merged
+  report merged
+end
+
 ;; Report the distribution (count) of beliefs for attribute attr over a given agent set.
 ;; @param agentset - The agentset to count over.
 ;; @param attr - The string attribute to search for in agent brains.
@@ -1359,6 +1407,11 @@ end
 ;; WITH PYTHON CONVERSION
 ;;;;;;;;;;;;;;;;;;
 
+;; Replace an element in a NetLogo dictionary (list of lists) with a new value
+;;
+;; @param l - The list (dictionary) replace an item in
+;; @param key - The key of the entry to replace
+;; @param value - The new value to insert at entry @param key
 to-report replace-dict-item [ l key value ]
   let key-i 0
   let i 0
@@ -1368,7 +1421,7 @@ to-report replace-dict-item [ l key value ]
     ]
     set i i + 1
   ]
-  report (replace-item key-i l value)
+  report (replace-item key-i l (list key value))
 end
 
 to-report dict-value [ dict key ]
@@ -1794,7 +1847,7 @@ N
 N
 0
 1000
-30.0
+20.0
 10
 1
 NIL
@@ -2615,7 +2668,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-1.0
+2.0
 1
 1
 NIL
@@ -2764,6 +2817,21 @@ repetition
 repetition
 0
 10
+5.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+513
+518
+686
+552
+cit-memory-len
+cit-memory-len
+0
+20
 5.0
 1
 1
