@@ -1754,7 +1754,7 @@ epsilon
 epsilon
 0
 belief-resolution
-0.0
+2.0
 1
 1
 NIL
@@ -1847,7 +1847,7 @@ N
 N
 0
 1000
-20.0
+100.0
 10
 1
 NIL
@@ -2586,7 +2586,7 @@ CHOOSER
 institution-tactic
 institution-tactic
 "predetermined" "broadcast-brain" "appeal-mean" "appeal-mode" "appeal-median" "max-reach-no-chain"
-1
+2
 
 TEXTBOX
 31
@@ -2668,7 +2668,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-2.0
+10.0
 1
 1
 NIL
@@ -2832,7 +2832,7 @@ cit-memory-len
 cit-memory-len
 0
 20
-5.0
+10.0
 1
 1
 NIL
