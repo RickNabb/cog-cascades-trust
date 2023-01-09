@@ -29,6 +29,7 @@ globals [
   messages-over-time
   citizen-priors
   citizen-malleables
+  topics
 
   ;; For experiments
   contagion-dir
@@ -95,7 +96,9 @@ to setup
 
   ;; Set the priors and malleables for each citizen
   set citizen-priors []
-  set citizen-malleables [ "Attributes.A" ]
+  set citizen-malleables [ "A" "B" "C" ]
+
+  set topics [ ["Q1" ["A" "B"]] ["Q2" ["A" "C"]] ]
 
   ask patches [
     set pcolor white
@@ -710,7 +713,7 @@ to add-message-to-memory [ cit source message ]
     let memory-by-belief dict-value media-messages-memory source
     ;; TODO: Make this not hardcoded as "A"
     let belief dict-value message "A"
-    let belief-key (word "Attributes." "A")
+    let belief-key "A"
     let memory dict-value memory-by-belief belief-key
 
     set memory (lput belief memory)
@@ -781,6 +784,63 @@ to hear-message [ cit message-id message ]
     ]
   ]
 end
+
+;; Return citizen "cit" trust level in media "med" on topic "topic"
+;; calculated by trust-fn. This fetches the memory matrix from the
+;; citizen, conditioned by topic, of messages sent by institution med,
+;; and then feeds them through the trust function to get a result.
+;;
+;; @param cit - The citizen to get trust for.
+;; @param med - The media agent their trust is in.
+;; @param topic - The topic to fetch memory for (containing belief propositions).
+to-report citizen-trust-in-media [ cit med topic ]
+  let topic-beliefs (dict-value topics topic)
+  let cit-memory []
+
+  ask cit [
+    let memory-by-belief dict-value media-messages-memory med
+    set cit-memory (map [ b -> list b (dict-value memory-by-belief b) ] topic-beliefs)
+  ]
+
+  if citizen-trust-fn = "average-bel" [
+    report average-trust cit-memory cit
+  ]
+  report -1
+end
+
+to-report average-trust [ cit-memory cit ]
+  let topic-beliefs (map [ entry -> (item 0 entry) ] cit-memory)
+;  let cit-belief []
+;  set cit-belief (map [ b -> list b (dict-value brain b) ] topic-beliefs)
+;  show (word "Agent w/ belief " [brain] of cit)
+;  show cit-memory
+  let belief-vals (map [ b-mem -> (list (item 0 b-mem) (map [ mem -> cognitive-contagion-p cit (list (list (item 0 b-mem) mem)) ] (item 1 b-mem))) ] cit-memory)
+  let all-beliefs []
+  foreach belief-vals [ b-mem ->
+    foreach (item 1 b-mem) [ mem ->
+      set all-beliefs lput mem all-beliefs
+    ]
+  ]
+  report mean all-beliefs
+end
+
+;to add-message-to-memory [ cit source message ]
+;  ask cit [
+;    let memory-by-belief dict-value media-messages-memory source
+;    ;; TODO: Make this not hardcoded as "A"
+;    let belief dict-value message "A"
+;    let belief-key "A"
+;    let memory dict-value memory-by-belief belief-key
+;
+;    set memory (lput belief memory)
+;    if length memory > cit-memory-len [
+;      set memory but-first memory
+;    ]
+;    set memory-by-belief (replace-dict-item memory-by-belief belief-key memory)
+;    set media-messages-memory (replace-dict-item media-messages-memory source memory-by-belief)
+;  ]
+;end
+;set media-messages-memory map [ i -> list i (map [ b -> list b [] ] all-beliefs) ] (sort medias)
 
 to test
   py:setup "python"
@@ -1002,7 +1062,7 @@ end
 
 to-report create-agent-brain [ id prior-attrs malleable-attrs prior-vals malleable-vals ]
   report py:runresult(
-    word "create_agent_brain(" id "," (list-as-py-array prior-attrs false) "," (list-as-py-array malleable-attrs false) "," (list-as-py-array prior-vals false) ", " (list-as-py-array malleable-vals false) ",'" brain-type "',1,1)"
+    word "create_agent_brain(" id "," (list-as-py-array prior-attrs true) "," (list-as-py-array malleable-attrs true) "," (list-as-py-array prior-vals false) ", " (list-as-py-array malleable-vals false) ",'" brain-type "',1,1)"
   )
 end
 
@@ -1754,7 +1814,7 @@ epsilon
 epsilon
 0
 belief-resolution
-2.0
+3.0
 1
 1
 NIL
@@ -1767,7 +1827,7 @@ SWITCH
 91
 show-media-connections?
 show-media-connections?
-1
+0
 1
 -1000
 
@@ -2526,7 +2586,7 @@ CHOOSER
 citizen-init-dist
 citizen-init-dist
 "uniform" "normal" "polarized"
-0
+1
 
 TEXTBOX
 513
@@ -2586,7 +2646,7 @@ CHOOSER
 institution-tactic
 institution-tactic
 "predetermined" "broadcast-brain" "appeal-mean" "appeal-mode" "appeal-median" "max-reach-no-chain"
-2
+1
 
 TEXTBOX
 31
@@ -2627,7 +2687,7 @@ CHOOSER
 media-ecosystem-dist
 media-ecosystem-dist
 "uniform" "normal" "polarized"
-0
+1
 
 SLIDER
 26
@@ -2668,7 +2728,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-10.0
+3.0
 1
 1
 NIL
@@ -2832,11 +2892,36 @@ cit-memory-len
 cit-memory-len
 0
 20
-10.0
+5.0
 1
 1
 NIL
 HORIZONTAL
+
+SLIDER
+345
+313
+485
+347
+zeta
+zeta
+0
+1
+0.5
+0.01
+1
+NIL
+HORIZONTAL
+
+CHOOSER
+512
+562
+651
+607
+citizen-trust-fn
+citizen-trust-fn
+"average-bel"
+0
 
 @#$#@#$#@
 ## WHAT IS IT?

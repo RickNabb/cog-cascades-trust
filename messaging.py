@@ -115,29 +115,35 @@ def create_agent_brain(
         'ID': ID,
         'alpha': alpha,
         'beta': beta,
-        'malleable': list(map(lambda attr: attr.name, malleable_attributes)),
-        'prior': list(map(lambda attr: attr.name, prior_attributes)),
+        'malleable': malleable_attributes,
+        'prior': prior_attributes,
+        # 'malleable': list(map(lambda attr: attr.name, malleable_attributes)),
+        # 'prior': list(map(lambda attr: attr.name, prior_attributes)),
         'cont_tokens': {},
     }
     # Initialize malleable beliefs w/ tokens for belief updates
     for i in range(0, len(malleable_attributes)):
       attr = malleable_attributes[i]
-      agent[attr.name] = malleable_initial[i]
+      # agent[attr.name] = malleable_initial[i]
+      agent[attr] = malleable_initial[i]
 
     # Initialize prior beliefs that cannot change - no tokens
     for i in range(0, len(prior_attributes)):
         attr = prior_attributes[i]
-        agent[attr.name] = prior_initial[i]
+        # agent[attr.name] = prior_initial[i]
+        agent[attr] = prior_initial[i]
 
     if brain_type == 'discrete':
       for i in range(0, len(malleable_attributes)):
         attr = malleable_attributes[i]
-        agent[attr.name] = malleable_initial[i]
+        # agent[attr.name] = malleable_initial[i]
+        agent[attr] = malleable_initial[i]
         # Initialize belief change counters
     elif brain_type == 'continuous':
       for i in range(0, len(malleable_attributes)):
         attr = malleable_attributes[i]
-        agent['cont_tokens'][attr.name] = malleable_initial[i]
+        # agent['cont_tokens'][attr.name] = malleable_initial[i]
+        agent['cont_tokens'][attr] = malleable_initial[i]
 
     return agent
 
