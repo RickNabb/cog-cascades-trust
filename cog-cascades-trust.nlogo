@@ -660,6 +660,7 @@ to receive-message [ source cit sender message message-id ]
           ]
         ]
         update-citizen
+        update-media-connection self source message
       ]
 
       if spread-type = "simple" [
@@ -803,12 +804,18 @@ to-report citizen-trust-in-media [ cit med topic ]
   ]
 
   if citizen-trust-fn = "average-bel" [
-    report average-trust cit-memory cit
+    report average-bel-trust cit-memory cit
   ]
   report -1
 end
 
-to-report average-trust [ cit-memory cit ]
+;; Report trust based off of a citizen's memory of another agent's messages
+;; and their own internal trust. The trust ends up being the average of belief
+;; values calculated with the cognitive contagion function for each belief difference.
+;;
+;; @param cit-memory - A representation of the citizen's memory of messages about a certain topic
+;; @param cit - The citizen
+to-report average-bel-trust [ cit-memory cit ]
   let topic-beliefs (map [ entry -> (item 0 entry) ] cit-memory)
 ;  let cit-belief []
 ;  set cit-belief (map [ b -> list b (dict-value brain b) ] topic-beliefs)
@@ -824,23 +831,38 @@ to-report average-trust [ cit-memory cit ]
   report mean all-beliefs
 end
 
-;to add-message-to-memory [ cit source message ]
-;  ask cit [
-;    let memory-by-belief dict-value media-messages-memory source
-;    ;; TODO: Make this not hardcoded as "A"
-;    let belief dict-value message "A"
-;    let belief-key "A"
-;    let memory dict-value memory-by-belief belief-key
-;
-;    set memory (lput belief memory)
-;    if length memory > cit-memory-len [
-;      set memory but-first memory
-;    ]
-;    set memory-by-belief (replace-dict-item memory-by-belief belief-key memory)
-;    set media-messages-memory (replace-dict-item media-messages-memory source memory-by-belief)
-;  ]
-;end
-;set media-messages-memory map [ i -> list i (map [ b -> list b [] ] all-beliefs) ] (sort medias)
+;; Connect or disconnect from a media source based off of
+;; trust in that source and the global threshold set by zeta;
+;; trust conditioned by topics that the message touched on.
+;;
+;; @param cit - The citizen to update links.
+;; @param med - The media to check trust against (the one who
+;; just sent a message to the citizen).
+;; @param message - The message a citizen just received.
+to update-media-connection [ cit med message ]
+  let message-bels (map [ bel-val -> (item 0 bel-val) ] message)
+  let message-topics []
+  foreach message-bels [ bel ->
+    foreach topics [ topic ->
+      if member? bel (item 1 topic) [
+        set message-topics lput (item 0 topic) message-topics
+      ]
+    ]
+  ]
+  ;; TODO: This is an assumption that connections do not differ based on topic,
+  ;; but rather that distrust in one topic may make or break a connection even
+  ;; given trust in another topic
+  let trust-by-topic map [ topic -> citizen-trust-in-media cit med topic ] message-topics
+  let trust mean trust-by-topic
+  ask cit [
+    if trust < zeta and in-link-neighbor? med [
+      ask in-subscriber-from med [ die ]
+    ]
+    if trust >= zeta and not in-link-neighbor? med [
+      create-subscriber-from med
+    ]
+  ]
+end
 
 to test
   py:setup "python"
