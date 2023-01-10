@@ -42,7 +42,7 @@ citizens-own [
   messages-heard
   messages-believed
   ;; Trust
-  media-messages-memory
+  agent-messages-memory
 ]
 
 medias-own [
@@ -106,9 +106,9 @@ to setup
 
   ifelse not load-graph? [
     create-agents
-    initialize-agents
     connect-agents
     connect-media
+    initialize-agents
   ] [
     read-graph
   ]
@@ -177,6 +177,7 @@ to create-citizenz
     set brain create-agent-brain id citizen-priors citizen-malleables (item id prior-vals) (item id malleable-vals)
     set messages-heard []
     set messages-believed []
+    set agent-messages-memory []
 
     set size 0.5
     setxy random-xcor random-ycor
@@ -189,7 +190,12 @@ end
 to initialize-agents
   ask citizens [
     let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
-    set media-messages-memory map [ i -> list i (map [ b -> list b [] ] all-beliefs) ] (sort medias)
+    foreach (sort subscriber-neighbors) [ neighbor ->
+      add-agent-memory self neighbor
+    ]
+    foreach (sort social-friend-neighbors) [ neighbor ->
+      add-agent-memory self neighbor
+    ]
   ]
 end
 
@@ -643,7 +649,14 @@ to receive-message [ source cit sender message message-id ]
       hear-message self message-id message
 ;      show (word "message " message-id " heard from source " source " from sender " sender)
 
-      add-message-to-memory self source message
+      if citizen-media-trust? [
+        add-agent-memory self source
+        add-message-to-memory self source message
+      ]
+      if citizen-citizen-trust? [
+        add-agent-memory self sender
+        add-message-to-memory self sender message
+      ]
 
       if spread-type = "cognitive" [
 
@@ -660,7 +673,8 @@ to receive-message [ source cit sender message message-id ]
           ]
         ]
         update-citizen
-        update-media-connection self source message
+        if citizen-media-trust? [ update-trust-connection self source message ]
+        if citizen-citizen-trust? [ update-trust-connection self sender message ]
       ]
 
       if spread-type = "simple" [
@@ -711,7 +725,7 @@ end
 ;; @param message - The content of the message
 to add-message-to-memory [ cit source message ]
   ask cit [
-    let memory-by-belief dict-value media-messages-memory source
+    let memory-by-belief dict-value agent-messages-memory source
     ;; TODO: Make this not hardcoded as "A"
     let belief dict-value message "A"
     let belief-key "A"
@@ -722,7 +736,7 @@ to add-message-to-memory [ cit source message ]
       set memory but-first memory
     ]
     set memory-by-belief (replace-dict-item memory-by-belief belief-key memory)
-    set media-messages-memory (replace-dict-item media-messages-memory source memory-by-belief)
+    set agent-messages-memory (replace-dict-item agent-messages-memory source memory-by-belief)
   ]
 end
 
@@ -786,20 +800,20 @@ to hear-message [ cit message-id message ]
   ]
 end
 
-;; Return citizen "cit" trust level in media "med" on topic "topic"
+;; Return citizen "cit" trust level in agent "oth" on topic "topic"
 ;; calculated by trust-fn. This fetches the memory matrix from the
-;; citizen, conditioned by topic, of messages sent by institution med,
+;; citizen, conditioned by topic, of messages sent by agent oth,
 ;; and then feeds them through the trust function to get a result.
 ;;
 ;; @param cit - The citizen to get trust for.
-;; @param med - The media agent their trust is in.
+;; @param oth - The other agent their trust is in.
 ;; @param topic - The topic to fetch memory for (containing belief propositions).
-to-report citizen-trust-in-media [ cit med topic ]
+to-report citizen-trust-in-other [ cit oth topic ]
   let topic-beliefs (dict-value topics topic)
   let cit-memory []
 
   ask cit [
-    let memory-by-belief dict-value media-messages-memory med
+    let memory-by-belief dict-value agent-messages-memory oth
     set cit-memory (map [ b -> list b (dict-value memory-by-belief b) ] topic-beliefs)
   ]
 
@@ -831,15 +845,15 @@ to-report average-bel-trust [ cit-memory cit ]
   report mean all-beliefs
 end
 
-;; Connect or disconnect from a media source based off of
-;; trust in that source and the global threshold set by zeta;
+;; Connect or disconnect from another agent based off of
+;; trust in that citizen and the global threshold set by zeta;
 ;; trust conditioned by topics that the message touched on.
 ;;
 ;; @param cit - The citizen to update links.
-;; @param med - The media to check trust against (the one who
+;; @param oth - The other agent (citizen or media) to check trust against (the one who
 ;; just sent a message to the citizen).
 ;; @param message - The message a citizen just received.
-to update-media-connection [ cit med message ]
+to update-trust-connection [ cit oth message ]
   let message-bels (map [ bel-val -> (item 0 bel-val) ] message)
   let message-topics []
   foreach message-bels [ bel ->
@@ -852,14 +866,39 @@ to update-media-connection [ cit med message ]
   ;; TODO: This is an assumption that connections do not differ based on topic,
   ;; but rather that distrust in one topic may make or break a connection even
   ;; given trust in another topic
-  let trust-by-topic map [ topic -> citizen-trust-in-media cit med topic ] message-topics
+  let trust-by-topic map [ topic -> citizen-trust-in-other cit oth topic ] message-topics
   let trust mean trust-by-topic
   ask cit [
-    if trust < zeta and in-link-neighbor? med [
-      ask in-subscriber-from med [ die ]
+    if is-media? oth [
+      if trust < zeta and in-link-neighbor? oth [
+        ask in-subscriber-from oth [ die ]
+      ]
+      if trust >= zeta and not in-link-neighbor? oth [
+        create-subscriber-from oth
+      ]
     ]
-    if trust >= zeta and not in-link-neighbor? med [
-      create-subscriber-from med
+    if is-citizen? oth [
+      if trust < zeta and social-friend-neighbor? oth [
+        ask social-friend-with oth [ die ]
+      ]
+      if trust >= zeta and not in-link-neighbor? oth [
+        create-social-friend-to oth
+        create-social-friend-from oth
+      ]
+    ]
+  ]
+end
+
+;; Add a memory slot for a given agent's messages for citizen cit
+;;
+;; @param cit - The citizen to add a memory slot to
+;; @param agente - The agent to add memory tracking for
+to add-agent-memory [ cit agente ]
+  ask cit [
+    let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
+    let entry dict-value agent-messages-memory agente
+    if entry = -1 [
+      set agent-messages-memory (lput (list agente (map [ b -> list b [] ] all-beliefs)) agent-messages-memory)
     ]
   ]
 end
@@ -2668,7 +2707,7 @@ CHOOSER
 institution-tactic
 institution-tactic
 "predetermined" "broadcast-brain" "appeal-mean" "appeal-mode" "appeal-median" "max-reach-no-chain"
-1
+2
 
 TEXTBOX
 31
@@ -2709,7 +2748,7 @@ CHOOSER
 media-ecosystem-dist
 media-ecosystem-dist
 "uniform" "normal" "polarized"
-1
+2
 
 SLIDER
 26
@@ -2750,7 +2789,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-3.0
+15.0
 1
 1
 NIL
@@ -2868,7 +2907,7 @@ SWITCH
 915
 graph-homophily?
 graph-homophily?
-0
+1
 1
 -1000
 
@@ -2944,6 +2983,46 @@ citizen-trust-fn
 citizen-trust-fn
 "average-bel"
 0
+
+SWITCH
+513
+619
+677
+653
+citizen-citizen-trust?
+citizen-citizen-trust?
+1
+1
+-1000
+
+SWITCH
+514
+659
+676
+693
+citizen-media-trust?
+citizen-media-trust?
+0
+1
+-1000
+
+PLOT
+727
+652
+1104
+842
+homophily
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot graph-homophily"
 
 @#$#@#$#@
 ## WHAT IS IT?
