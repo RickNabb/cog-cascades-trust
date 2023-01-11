@@ -1546,6 +1546,14 @@ to-report agent-brain-beliefs-as-list [ agent ]
   report map [ bel -> item 1 bel ] bels
 end
 
+to-report media-sent-messages-reduced [ med ]
+  report [map [ m -> (item 0 (item 1 m)) ] messages-sent] of med
+end
+
+to-report media-messages-for-bel [ med bel ]
+  report filter [ bel-val -> (item 0 bel-val) = bel ] media-sent-messages-reduced med
+end
+
 ;; Limits a value between a min and a max.
 ;; @param val - The value.
 ;; @param lower - The lower bound.
@@ -1568,6 +1576,10 @@ to-report date-time-safe
     set i i + 1
   ]
   report safedatetime
+end
+
+to-report last-n-of [ liste en ]
+  report sublist liste (max (list (length liste - en) 0)) (length liste)
 end
 
 ;;;;;;;;;;;;;;;;;;
@@ -1922,7 +1934,7 @@ epsilon
 epsilon
 0
 belief-resolution
-2.0
+1.0
 1
 1
 NIL
@@ -2602,7 +2614,7 @@ message-repeats
 message-repeats
 0
 10
-1.0
+2.0
 1
 1
 NIL
@@ -2868,7 +2880,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\nset-plot-x-range -1 (belief-resolution + 1)\n\nhistogram [dict-value brain \"A\"] of medias"
+"default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\nset-plot-x-range -1 (belief-resolution + 1)\n\nlet media-bel-by-messages (map [ m -> round mean (last-n-of ([messages-sent] of m) cit-memory-len) ] (sort medias))\nhistogram media-bel-by-messages\n;histogram [dict-value brain \"A\"] of medias"
 
 MONITOR
 1617
@@ -3015,7 +3027,7 @@ zeta
 zeta
 0
 1
-0.25
+0.5
 0.01
 1
 NIL
@@ -3049,7 +3061,7 @@ SWITCH
 693
 citizen-media-trust?
 citizen-media-trust?
-0
+1
 1
 -1000
 
