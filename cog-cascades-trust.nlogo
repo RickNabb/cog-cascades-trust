@@ -107,8 +107,16 @@ to setup
   ifelse not load-graph? [
     create-agents
     connect-agents
-    connect-media
-    initialize-agents
+    if citizen-citizen-trust? [
+      initialize-citizen-citizen-memory
+    ]
+    ifelse citizen-media-trust? [
+      connect-all-media
+      initialize-citizen-media-memory
+      prune-media-connections
+    ] [
+      connect-media-epsilon
+    ]
   ] [
     read-graph
   ]
@@ -185,16 +193,36 @@ to create-citizenz
   ]
 end
 
-;; Any of the code that comes after creation of agents but before
-;; connection of them
-to initialize-agents
+to initialize-citizen-citizen-memory
+  let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
   ask citizens [
-    let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
-    foreach (sort subscriber-neighbors) [ neighbor ->
-      add-agent-memory self neighbor
-    ]
     foreach (sort social-friend-neighbors) [ neighbor ->
       add-agent-memory self neighbor
+      initialize-memory-from-init-belief self neighbor
+    ]
+  ]
+end
+
+to initialize-citizen-media-memory
+  let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
+  ask citizens [
+    foreach (sort subscriber-neighbors) [ neighbor ->
+      add-agent-memory self neighbor
+      initialize-memory-from-init-belief self neighbor
+    ]
+  ]
+end
+
+to initialize-memory-from-init-belief [ cit oth ]
+  let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
+  ask cit [
+    repeat cit-memory-len [
+      ; TODO: Should this just be a message encoding all belief values rather than all belief
+      ; values worth of single messages?
+      foreach all-beliefs [ bel ->
+        let message (list (list bel (dict-value ([brain] of oth) bel)))
+        add-message-to-memory self oth message
+      ]
     ]
   ]
 end
@@ -337,15 +365,33 @@ to connect-agents
   ask citizens with [ empty? sort social-friend-neighbors ] [ show "removed isolate" ]
 end
 
-to connect-media
-  let u 0
+to connect-media-epsilon
   ask medias [
     let m self
     ask citizens [
       if dist-between-agent-brains brain ([brain] of m) <= epsilon [
         create-subscriber-from m [ set weight media-citizen-influence ]
-        ;      create-subscriber-to m [ set weight citizen-media-influence ]
       ]
+    ]
+  ]
+end
+
+to connect-all-media
+  ask medias [
+    let m self
+    ask citizens [
+      create-subscriber-from m
+    ]
+  ]
+end
+
+to prune-media-connections
+  let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
+  let message-with-all-topics (map [ bel -> (list bel 1) ] all-beliefs)
+  ask medias [
+    let m self
+    ask citizens [
+      update-trust-connection self m message-with-all-topics
     ]
   ]
 end
@@ -726,17 +772,18 @@ end
 to add-message-to-memory [ cit source message ]
   ask cit [
     let memory-by-belief dict-value agent-messages-memory source
-    ;; TODO: Make this not hardcoded as "A"
-    let belief dict-value message "A"
-    let belief-key "A"
-    let memory dict-value memory-by-belief belief-key
+    foreach message [ bel-val ->
+      let belief-key (item 0 bel-val)
+      let belief dict-value message belief-key
+      let memory dict-value memory-by-belief belief-key
 
-    set memory (lput belief memory)
-    if length memory > cit-memory-len [
-      set memory but-first memory
+      set memory (lput belief memory)
+      if length memory > cit-memory-len [
+        set memory but-first memory
+      ]
+      set memory-by-belief (replace-dict-item memory-by-belief belief-key memory)
+      set agent-messages-memory (replace-dict-item agent-messages-memory source memory-by-belief)
     ]
-    set memory-by-belief (replace-dict-item memory-by-belief belief-key memory)
-    set agent-messages-memory (replace-dict-item agent-messages-memory source memory-by-belief)
   ]
 end
 
@@ -856,9 +903,9 @@ end
 to update-trust-connection [ cit oth message ]
   let message-bels (map [ bel-val -> (item 0 bel-val) ] message)
   let message-topics []
-  foreach message-bels [ bel ->
-    foreach topics [ topic ->
-      if member? bel (item 1 topic) [
+  foreach topics [ topic ->
+    foreach message-bels [ bel ->
+      if member? bel (item 1 topic) and not member? (item 0 topic) message-topics [
         set message-topics lput (item 0 topic) message-topics
       ]
     ]
@@ -1875,7 +1922,7 @@ epsilon
 epsilon
 0
 belief-resolution
-3.0
+2.0
 1
 1
 NIL
@@ -1968,7 +2015,7 @@ N
 N
 0
 1000
-100.0
+500.0
 10
 1
 NIL
@@ -2748,7 +2795,7 @@ CHOOSER
 media-ecosystem-dist
 media-ecosystem-dist
 "uniform" "normal" "polarized"
-2
+1
 
 SLIDER
 26
@@ -2968,7 +3015,7 @@ zeta
 zeta
 0
 1
-0.5
+0.25
 0.01
 1
 NIL
