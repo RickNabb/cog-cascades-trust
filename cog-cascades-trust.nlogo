@@ -917,18 +917,18 @@ to update-trust-connection [ cit oth message ]
   let trust mean trust-by-topic
   ask cit [
     if is-media? oth [
-      if trust < zeta and in-link-neighbor? oth [
+      if trust < zeta-media and in-link-neighbor? oth [
         ask in-subscriber-from oth [ die ]
       ]
-      if trust >= zeta and not in-link-neighbor? oth [
+      if trust >= zeta-media and not in-link-neighbor? oth [
         create-subscriber-from oth
       ]
     ]
     if is-citizen? oth [
-      if trust < zeta and social-friend-neighbor? oth [
+      if trust < zeta-cit and social-friend-neighbor? oth [
         ask social-friend-with oth [ die ]
       ]
-      if trust >= zeta and not in-link-neighbor? oth [
+      if trust >= zeta-cit and not in-link-neighbor? oth [
         create-social-friend-to oth
         create-social-friend-from oth
       ]
@@ -1743,13 +1743,13 @@ to-report tuple-list-as-py-dict [ l key-quotes? val-quotes? ]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-1169
+1028
 13
-1557
-402
+1417
+403
 -1
 -1
-11.52
+9.030303030303031
 1
 10
 1
@@ -1821,10 +1821,10 @@ NIL
 1
 
 PLOT
-1625
-73
-2023
-223
+1047
+474
+1445
+624
 cit-a-histogram
 A Value
 Number of Agents
@@ -1839,10 +1839,10 @@ PENS
 "default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\nset-plot-x-range -1 (belief-resolution + 1)\n\nhistogram [dict-value brain \"A\"] of citizens"
 
 MONITOR
-1623
-232
-1681
-277
+1045
+633
+1103
+678
 0
 count citizens with [dict-value brain \"A\" = 0]
 1
@@ -1850,10 +1850,10 @@ count citizens with [dict-value brain \"A\" = 0]
 11
 
 MONITOR
-1680
-232
-1737
-277
+1102
+633
+1159
+678
 1
 count citizens with [dict-value brain \"A\" = 1]
 1
@@ -1861,10 +1861,10 @@ count citizens with [dict-value brain \"A\" = 1]
 11
 
 MONITOR
-1743
-232
-1809
-277
+1165
+633
+1231
+678
 2
 count citizens with [dict-value brain \"A\" = 2]
 1
@@ -1872,10 +1872,10 @@ count citizens with [dict-value brain \"A\" = 2]
 11
 
 MONITOR
-1815
-232
-1873
-277
+1237
+633
+1295
+678
 3
 count citizens with [dict-value brain \"A\" = 3]
 1
@@ -1883,10 +1883,10 @@ count citizens with [dict-value brain \"A\" = 3]
 11
 
 MONITOR
-1870
-232
-1928
-277
+1292
+633
+1350
+678
 4
 count citizens with [dict-value brain \"A\" = 4]
 1
@@ -1911,10 +1911,10 @@ NIL
 0
 
 SLIDER
-535
-1007
-665
-1040
+832
+788
+962
+821
 threshold
 threshold
 0
@@ -1926,10 +1926,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-167
-312
-339
-345
+395
+424
+505
+458
 epsilon
 epsilon
 0
@@ -1969,30 +1969,30 @@ NIL
 1
 
 TEXTBOX
-512
-288
-662
-306
+680
+305
+830
+323
 Number of citizens
 11
 0.0
 1
 
 TEXTBOX
-173
-275
-354
-303
-Threshold to subscribe to institutions
-11
+398
+362
+579
+390
+Connection Parameters
+12
 0.0
 1
 
 TEXTBOX
 25
 144
-175
-162
+193
+163
 Simulation Parameters
 14
 0.0
@@ -2009,20 +2009,20 @@ Simulation Controls
 1
 
 TEXTBOX
-1627
-15
-1777
-33
+1049
+415
+1199
+433
 Simulation State Plots
 14
 0.0
 1
 
 SLIDER
-510
-310
-682
-343
+678
+327
+850
+360
 N
 N
 0
@@ -2047,8 +2047,8 @@ show-citizen-political?
 SWITCH
 300
 99
-467
-132
+495
+133
 show-social-friends?
 show-social-friends?
 0
@@ -2056,20 +2056,20 @@ show-social-friends?
 -1000
 
 TEXTBOX
-1625
-43
-1775
-61
+1047
+444
+1197
+462
 Cognitive State
 11
 0.0
 1
 
 PLOT
-730
-490
-1100
-640
+1047
+902
+1417
+1052
 Social Friend Degree of Nodes
 NIL
 NIL
@@ -2084,10 +2084,10 @@ PENS
 "default" 1.0 1 -16777216 true "" "set-plot-x-range 0 (max [count social-friend-neighbors] of citizens) + 1\nhistogram [count social-friend-neighbors] of citizens"
 
 CHOOSER
-339
-1060
-481
-1105
+684
+737
+826
+782
 spread-type
 spread-type
 "simple" "complex" "cognitive"
@@ -2104,10 +2104,10 @@ Display
 1
 
 SWITCH
-29
-737
-148
-770
+32
+829
+151
+862
 load-graph?
 load-graph?
 1
@@ -2115,10 +2115,10 @@ load-graph?
 -1000
 
 INPUTBOX
-27
-777
-242
-837
+29
+869
+244
+929
 load-graph-path
 D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/simulation-data/29-May-2022-conditions-to-polarize-cognitive/graphs/2-appeal-mode-polarized-polarized-2-ba-homophilic-3-3.csv
 1
@@ -2126,10 +2126,10 @@ D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/simulation-da
 String
 
 INPUTBOX
-29
-843
-244
-903
+32
+935
+247
+995
 save-graph-path
 D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/simulation-data/29-May-2022-conditions-to-polarize-cognitive/graphs/2-appeal-mode-polarized-polarized-2-barabasi-albert-3-0.csv
 1
@@ -2154,20 +2154,20 @@ NIL
 1
 
 CHOOSER
-29
-1059
-182
-1104
+687
+859
+840
+904
 cognitive-fn
 cognitive-fn
 "linear-gullible" "linear-stubborn" "linear-mid" "threshold-gullible" "threshold-mid" "threshold-stubborn" "sigmoid-gullible" "sigmoid-stubborn" "sigmoid-mid"
 7
 
 SLIDER
-175
-1005
-349
-1038
+830
+699
+1004
+732
 simple-spread-chance
 simple-spread-chance
 0
@@ -2179,10 +2179,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-354
-1006
-528
-1039
+830
+737
+1004
+770
 complex-spread-ratio
 complex-spread-ratio
 0
@@ -2194,10 +2194,10 @@ NIL
 HORIZONTAL
 
 CHOOSER
-194
-1060
-333
-1105
+685
+788
+824
+833
 brain-type
 brain-type
 "discrete" "continuous"
@@ -2230,10 +2230,10 @@ D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/simulation-da
 String
 
 PLOT
-732
-24
-1106
-312
+1485
+13
+1859
+301
 percent-agent-beliefs
 Steps
 % of Agents
@@ -2247,10 +2247,10 @@ false
 PENS
 
 MONITOR
-1925
-232
-1983
-277
+1347
+633
+1405
+678
 5
 count citizens with [dict-value brain \"A\" = 5]
 17
@@ -2258,10 +2258,10 @@ count citizens with [dict-value brain \"A\" = 5]
 11
 
 MONITOR
-1987
-232
-2045
-277
+1409
+633
+1467
+678
 6
 count citizens with [dict-value brain \"A\" = 6]
 17
@@ -2280,10 +2280,10 @@ media-agents?
 -1000
 
 SLIDER
-29
-1149
-202
-1182
+687
+949
+860
+982
 cognitive-exponent
 cognitive-exponent
 -10
@@ -2295,10 +2295,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-29
-1109
-202
-1142
+687
+909
+860
+942
 cognitive-scalar
 cognitive-scalar
 -20
@@ -2310,10 +2310,10 @@ NIL
 HORIZONTAL
 
 SWITCH
-209
-1109
-354
-1142
+867
+909
+1012
+942
 cognitive-scalar?
 cognitive-scalar?
 1
@@ -2321,10 +2321,10 @@ cognitive-scalar?
 -1000
 
 SWITCH
-213
-1150
-378
-1183
+870
+949
+1024
+983
 cognitive-exponent?
 cognitive-exponent?
 0
@@ -2332,10 +2332,10 @@ cognitive-exponent?
 -1000
 
 SLIDER
-29
-1195
-202
-1228
+687
+994
+860
+1027
 cognitive-translate
 cognitive-translate
 -10
@@ -2347,10 +2347,10 @@ NIL
 HORIZONTAL
 
 SWITCH
-213
-1195
-376
-1228
+870
+994
+1025
+1028
 cognitive-translate?
 cognitive-translate?
 0
@@ -2358,30 +2358,30 @@ cognitive-translate?
 -1000
 
 TEXTBOX
-33
-982
-221
-1005
+685
+668
+873
+691
 Contagion Parameters
-12
+14
 0.0
 1
 
 CHOOSER
-252
-732
-391
-777
+254
+824
+393
+869
 graph-type
 graph-type
 "erdos-renyi" "watts-strogatz" "barabasi-albert" "ba-homophilic" "mag" "facebook" "kronecker"
 2
 
 SLIDER
-254
-803
-377
-836
+257
+895
+380
+928
 erdos-renyi-p
 erdos-renyi-p
 0
@@ -2393,30 +2393,30 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-28
-273
-177
-303
+27
+280
+255
+299
 Institutional Agent Parameters
-12
+14
 0.0
 1
 
 TEXTBOX
-29
-690
-217
-713
+33
+780
+221
+803
 Graph Parameters
-12
+14
 0.0
 1
 
 SLIDER
-399
-756
-533
-789
+409
+900
+543
+933
 watts-strogatz-p
 watts-strogatz-p
 0
@@ -2428,10 +2428,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-400
-796
-527
-829
+409
+940
+536
+973
 watts-strogatz-k
 watts-strogatz-k
 0
@@ -2443,10 +2443,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-252
-869
-377
-902
+254
+962
+379
+995
 ba-m
 ba-m
 0
@@ -2458,30 +2458,30 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-254
-847
-369
-870
+257
+939
+372
+962
 Barabasi-Albert (ba)
 11
 0.0
 1
 
 CHOOSER
-250
-937
-389
-982
+252
+1029
+391
+1074
 mag-style
 mag-style
 "default" "homophilic" "heterophilic"
 0
 
 SWITCH
-34
-1005
-167
-1038
+685
+697
+818
+730
 contagion-on?
 contagion-on?
 1
@@ -2489,10 +2489,10 @@ contagion-on?
 -1000
 
 SLIDER
-497
-99
-670
-132
+504
+100
+677
+133
 belief-resolution
 belief-resolution
 0
@@ -2504,10 +2504,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-550
-834
-707
-867
+30
+1113
+187
+1146
 citizen-citizen-influence
 citizen-citizen-influence
 0
@@ -2519,10 +2519,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-552
-753
-705
-786
+33
+1032
+186
+1065
 citizen-media-influence
 citizen-media-influence
 0
@@ -2534,10 +2534,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-552
-793
-707
-826
+33
+1072
+188
+1105
 media-citizen-influence
 media-citizen-influence
 0
@@ -2549,20 +2549,20 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-553
-730
-703
-748
+34
+1008
+184
+1026
 Link weight settings
 11
 0.0
 1
 
 INPUTBOX
-399
-855
-542
-940
+409
+999
+552
+1084
 kronecker-seed
 [[0.6,0.16,0.24],\n  [0.40,0.2,0.4],\n  [0.21,0.14,0.65]]
 1
@@ -2570,10 +2570,10 @@ kronecker-seed
 String
 
 SLIDER
-399
-946
-491
-979
+409
+1090
+501
+1123
 kronecker-k
 kronecker-k
 0
@@ -2585,20 +2585,20 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-403
-836
-553
-854
+413
+980
+563
+998
 Kronecker
 11
 0.0
 1
 
 INPUTBOX
-28
-439
-244
-499
+25
+484
+241
+544
 messages-data-path
 D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/messaging-data/
 1
@@ -2606,10 +2606,10 @@ D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/messaging-dat
 String
 
 SLIDER
-207
-371
-320
-404
+208
+413
+321
+446
 message-repeats
 message-repeats
 0
@@ -2621,20 +2621,20 @@ NIL
 HORIZONTAL
 
 CHOOSER
-250
-441
-389
-486
+247
+485
+386
+530
 message-file
 message-file
 "default" "50-50" "gradual"
 2
 
 PLOT
-729
-325
-1102
-480
+1487
+310
+1860
+465
 polarization
 NIL
 NIL
@@ -2649,80 +2649,80 @@ PENS
 "0" 1.0 0 -16777216 true "" "plot graph-polarization \"A\""
 
 TEXTBOX
-256
-783
-406
-801
+258
+875
+408
+893
 Erdos-Renyi (random)
 11
 0.0
 1
 
 TEXTBOX
-399
-732
-549
-750
+409
+877
+559
+895
 Watts-Strogatz (small world)
 11
 0.0
 1
 
 TEXTBOX
-253
-916
-403
-934
+255
+1008
+405
+1026
 Multiplicate Attribute Graph
 11
 0.0
 1
 
 TEXTBOX
-29
-715
-179
-733
+32
+807
+182
+825
 Saving/loading
 11
 0.0
 1
 
 TEXTBOX
-510
-268
-660
-286
+679
+278
+829
+296
 Citizen Parameters
-12
+14
 0.0
 1
 
 CHOOSER
-512
-374
-650
-419
+679
+414
+817
+459
 citizen-init-dist
 citizen-init-dist
 "uniform" "normal" "polarized"
 1
 
 TEXTBOX
-513
-356
-663
-374
+680
+375
+830
+398
 Initial belief distribution
-11
+12
 0.0
 1
 
 SLIDER
-510
-426
-638
-459
+840
+415
+968
+448
 cit-init-normal-mean
 cit-init-normal-mean
 0
@@ -2734,10 +2734,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-512
-465
-639
-498
+840
+454
+970
+488
 cit-init-normal-std
 cit-init-normal-std
 0
@@ -2749,50 +2749,50 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-29
-352
-179
-370
+30
+362
+180
+380
 Messaging tactics
-11
+12
 0.0
 1
 
 CHOOSER
-26
-371
-204
-416
+27
+412
+205
+457
 institution-tactic
 institution-tactic
 "predetermined" "broadcast-brain" "appeal-mean" "appeal-mode" "appeal-median" "max-reach-no-chain"
 2
 
 TEXTBOX
-31
-421
-181
-439
-Predetermined parameters
+28
+465
+277
+493
+If using predetermined tactics from a file
 11
 0.0
 1
 
 CHOOSER
-28
-509
-167
-554
+27
+592
+166
+637
 media-ecosystem
 media-ecosystem
 "predetermined" "distribution"
 1
 
 INPUTBOX
-173
-509
-430
-569
+29
+675
+286
+735
 media-ecosystem-path
 D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/ecosystems/
 1
@@ -2800,20 +2800,20 @@ D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/ecosystems/
 String
 
 CHOOSER
-27
-575
-172
-620
+183
+593
+328
+638
 media-ecosystem-dist
 media-ecosystem-dist
 "uniform" "normal" "polarized"
 1
 
 SLIDER
-26
+483
+593
+633
 626
-176
-659
 media-dist-normal-mean
 media-dist-normal-mean
 0
@@ -2825,10 +2825,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-182
-627
-334
-660
+483
+633
+635
+666
 media-dist-normal-std
 media-dist-normal-std
 0
@@ -2840,10 +2840,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-182
-587
-324
-620
+332
+593
+474
+626
 media-ecosystem-n
 media-ecosystem-n
 0
@@ -2855,20 +2855,20 @@ NIL
 HORIZONTAL
 
 CHOOSER
-344
-587
-486
-632
+290
+678
+432
+723
 media-ecosystem-file
 media-ecosystem-file
 "one-min" "one-mid" "one-max" "two-polarized" "two-mid" "three-polarized" "three-mid"
 5
 
 PLOT
-1618
-285
-2020
-435
+1047
+689
+1449
+839
 media-a-histogram
 NIL
 NIL
@@ -2880,13 +2880,13 @@ true
 false
 "" ""
 PENS
-"default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\nset-plot-x-range -1 (belief-resolution + 1)\n\nlet media-bel-by-messages (map [ m -> round mean (last-n-of ([messages-sent] of m) cit-memory-len) ] (sort medias))\nhistogram media-bel-by-messages\n;histogram [dict-value brain \"A\"] of medias"
+"default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\nset-plot-x-range -1 (belief-resolution + 1)\n\nlet media-bel-by-messages (map [ m -> round mean (last-n-of (map [ bel-val -> (item 1 bel-val) ] (media-messages-for-bel m \"A\")) cit-memory-len) ] (sort medias))\nhistogram media-bel-by-messages\n;histogram [dict-value brain \"A\"] of medias"
 
 MONITOR
-1617
-442
-1675
-487
+1045
+847
+1103
+892
 0
 count medias with [dict-value brain \"A\" = 0]
 0
@@ -2894,10 +2894,10 @@ count medias with [dict-value brain \"A\" = 0]
 11
 
 MONITOR
-1679
-443
-1737
-488
+1108
+848
+1166
+893
 1
 count medias with [dict-value brain \"A\" = 1]
 0
@@ -2905,10 +2905,10 @@ count medias with [dict-value brain \"A\" = 1]
 11
 
 MONITOR
-1739
-443
-1797
-488
+1168
+848
+1226
+893
 2
 count medias with [dict-value brain \"A\" = 2]
 0
@@ -2916,10 +2916,10 @@ count medias with [dict-value brain \"A\" = 2]
 11
 
 MONITOR
-1802
-443
-1860
-488
+1230
+848
+1288
+893
 3
 count medias with [dict-value brain \"A\" = 3]
 0
@@ -2927,10 +2927,10 @@ count medias with [dict-value brain \"A\" = 3]
 11
 
 MONITOR
-1863
-444
-1921
-489
+1292
+849
+1350
+894
 4
 count medias with [dict-value brain \"A\" = 4]
 0
@@ -2938,10 +2938,10 @@ count medias with [dict-value brain \"A\" = 4]
 11
 
 MONITOR
-1924
-445
-1982
-490
+1353
+849
+1411
+894
 5
 count medias with [dict-value brain \"A\" = 5]
 0
@@ -2949,10 +2949,10 @@ count medias with [dict-value brain \"A\" = 5]
 11
 
 MONITOR
-1985
-445
-2043
-490
+1413
+849
+1471
+894
 6
 count medias with [dict-value brain \"A\" = 6]
 0
@@ -2960,10 +2960,10 @@ count medias with [dict-value brain \"A\" = 6]
 11
 
 SWITCH
-551
-882
-705
-915
+404
+825
+558
+858
 graph-homophily?
 graph-homophily?
 1
@@ -2971,10 +2971,10 @@ graph-homophily?
 -1000
 
 PLOT
-1168
-422
-1541
-664
+1487
+473
+1861
+636
 chi-sq-citizens-media
 time
 p-value
@@ -2989,10 +2989,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "let cit-dist agent-brain-distribution citizens \"A\"\nlet media-dist agent-brain-distribution medias \"A\"\nlet chisq chi-sq cit-dist media-dist\nplot (item 1 chisq)"
 
 SLIDER
-22
-217
-195
-250
+25
+215
+198
+248
 repetition
 repetition
 0
@@ -3004,10 +3004,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-513
-518
-686
-552
+684
+582
+801
+616
 cit-memory-len
 cit-memory-len
 0
@@ -3019,12 +3019,12 @@ NIL
 HORIZONTAL
 
 SLIDER
-345
-313
-485
-347
-zeta
-zeta
+853
+590
+993
+624
+zeta-cit
+zeta-cit
 0
 1
 0.5
@@ -3034,20 +3034,20 @@ NIL
 HORIZONTAL
 
 CHOOSER
-512
-562
-651
-607
+853
+542
+992
+587
 citizen-trust-fn
 citizen-trust-fn
 "average-bel"
 0
 
 SWITCH
-513
-619
-677
-653
+683
+542
+847
+576
 citizen-citizen-trust?
 citizen-citizen-trust?
 1
@@ -3055,10 +3055,10 @@ citizen-citizen-trust?
 -1000
 
 SWITCH
-514
-659
-676
-693
+512
+503
+664
+537
 citizen-media-trust?
 citizen-media-trust?
 1
@@ -3066,10 +3066,10 @@ citizen-media-trust?
 -1000
 
 PLOT
-727
-652
-1104
-842
+1487
+642
+1864
+804
 homophily
 NIL
 NIL
@@ -3082,6 +3082,161 @@ false
 "" ""
 PENS
 "default" 1.0 0 -16777216 true "" "plot graph-homophily"
+
+SLIDER
+397
+503
+510
+537
+zeta-media
+zeta-media
+0
+1
+0.5
+0.01
+1
+NIL
+HORIZONTAL
+
+TEXTBOX
+28
+389
+97
+412
+Tactic
+11
+0.0
+1
+
+TEXTBOX
+209
+377
+334
+405
+How many messages\nto send per tick
+11
+0.0
+1
+
+TEXTBOX
+398
+390
+586
+418
+Belief dist threshold for\nconnection (no trust)
+11
+0.0
+1
+
+TEXTBOX
+397
+468
+585
+496
+Trust threshold for\nconnection
+11
+0.0
+1
+
+TEXTBOX
+29
+563
+217
+586
+Media initialization
+12
+0.0
+1
+
+TEXTBOX
+185
+570
+373
+593
+Media distribution parameters
+11
+0.0
+1
+
+TEXTBOX
+485
+569
+604
+592
+If normal distribution
+11
+0.0
+1
+
+TEXTBOX
+30
+653
+290
+681
+If using predetermined ecosystem from a file
+11
+0.0
+1
+
+TEXTBOX
+27
+263
+676
+291
+========================================================================
+11
+0.0
+1
+
+TEXTBOX
+664
+268
+679
+873
+|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|
+11
+0.0
+1
+
+TEXTBOX
+842
+394
+1030
+417
+Parameters for normal dist
+11
+0.0
+1
+
+TEXTBOX
+685
+505
+873
+533
+Trust parameters for\nconnection
+11
+0.0
+1
+
+TEXTBOX
+30
+760
+665
+779
+========================================================================
+11
+0.0
+1
+
+TEXTBOX
+684
+638
+1008
+657
+====================================
+11
+0.0
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
