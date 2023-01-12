@@ -2027,7 +2027,7 @@ N
 N
 0
 1000
-500.0
+250.0
 10
 1
 NIL
@@ -2051,7 +2051,7 @@ SWITCH
 133
 show-social-friends?
 show-social-friends?
-0
+1
 1
 -1000
 
@@ -2880,7 +2880,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\nset-plot-x-range -1 (belief-resolution + 1)\n\nlet media-bel-by-messages (map [ m -> round mean (last-n-of (map [ bel-val -> (item 1 bel-val) ] (media-messages-for-bel m \"A\")) cit-memory-len) ] (sort medias))\nhistogram media-bel-by-messages\n;histogram [dict-value brain \"A\"] of medias"
+"default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\nset-plot-x-range -1 (belief-resolution + 1)\nlet messages-by-media filter [m -> not empty? m ] (map [ m -> (last-n-of (map [ bel-val -> (item 1 bel-val) ] (media-messages-for-bel m \"A\")) cit-memory-len) ] (sort medias))\nlet media-bel-by-messages (map [ m -> round mean m ] messages-by-media)\nhistogram media-bel-by-messages\n;histogram [dict-value brain \"A\"] of medias"
 
 MONITOR
 1045
@@ -3027,7 +3027,7 @@ zeta-cit
 zeta-cit
 0
 1
-0.5
+0.2
 0.01
 1
 NIL
@@ -3050,7 +3050,7 @@ SWITCH
 576
 citizen-citizen-trust?
 citizen-citizen-trust?
-1
+0
 1
 -1000
 
@@ -3061,7 +3061,7 @@ SWITCH
 537
 citizen-media-trust?
 citizen-media-trust?
-1
+0
 1
 -1000
 
