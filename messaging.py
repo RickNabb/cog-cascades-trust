@@ -264,6 +264,45 @@ def agent_belief_vec_from_message(agent, message):
     for attr in message:
         agent_beliefs.append(agent[attr])
     return np.array(agent_beliefs)
+
+def agent_trust_in_other_belief_func(agent_memory, agent_brain, topic_beliefs, bel_func):
+  '''
+  Return agent trust in another agent based off of a certain trust function
+  applied to the difference between their memory and their internal beliefs.
+
+  :param agent_memory: The agent's memory of the other agent's messages
+  for all belief propositions.
+  :param agent_brain: The agent's brain, including its internal beliefs.
+  :param topic_beliefs: The beliefs relevant to the topic trust is being
+  calculated for.
+  :param bel_func: The function used to calculate belief values between memory
+  and the agent's beliefs. This should be a function that takes one input so
+  it can be vectorized.
+  '''
+  bf_vectorized = np.vectorize(bel_func)
+  topic_memories = { bel: np.array(list(map(lambda el: int(el), mem))) for (bel, mem) in agent_memory.items() if bel in topic_beliefs }
+  topic_mem_diffs = { bel: bf_vectorized(abs(mem - agent_brain[bel])) for (bel,mem) in topic_memories.items() }
+  all_belief_vals = np.array([ val for val in topic_mem_diffs.values() ])
+  return all_belief_vals.mean()
+
+def curr_sigmoid_p(exponent, translation):
+  '''
+  A curried sigmoid function used to calculate probabilty of belief
+  given a certain distance. This way, it is initialized to use exponent
+  and translation, and can return a function that can be vectorized to
+  apply with one param -- message_distance.
+
+  :param exponent: An exponent factor in the sigmoid function.
+  :param translation: A translation factor in the sigmoid function.
+  '''
+  return lambda message_distance: (1 / (1 + math.exp(exponent * (message_distance - translation))))
+
+def sigmoid_contagion_p(message_distance, exponent, translation):
+  '''
+  A sigmoid function to calcluate probability of belief in a given distance
+  between beliefs, governed by a few parameters.
+  '''
+  return (1 / (1 + math.exp(exponent * (message_distance - translation))))
   
 '''
 Update an agent brain dictionary to change the value of agent[attr] to value.

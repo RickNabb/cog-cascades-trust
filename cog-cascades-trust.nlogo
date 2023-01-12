@@ -847,51 +847,6 @@ to hear-message [ cit message-id message ]
   ]
 end
 
-;; Return citizen "cit" trust level in agent "oth" on topic "topic"
-;; calculated by trust-fn. This fetches the memory matrix from the
-;; citizen, conditioned by topic, of messages sent by agent oth,
-;; and then feeds them through the trust function to get a result.
-;;
-;; @param cit - The citizen to get trust for.
-;; @param oth - The other agent their trust is in.
-;; @param topic - The topic to fetch memory for (containing belief propositions).
-to-report citizen-trust-in-other [ cit oth topic ]
-  let topic-beliefs (dict-value topics topic)
-  let cit-memory []
-
-  ask cit [
-    let memory-by-belief dict-value agent-messages-memory oth
-    set cit-memory (map [ b -> list b (dict-value memory-by-belief b) ] topic-beliefs)
-  ]
-
-  if citizen-trust-fn = "average-bel" [
-    report average-bel-trust cit-memory cit
-  ]
-  report -1
-end
-
-;; Report trust based off of a citizen's memory of another agent's messages
-;; and their own internal trust. The trust ends up being the average of belief
-;; values calculated with the cognitive contagion function for each belief difference.
-;;
-;; @param cit-memory - A representation of the citizen's memory of messages about a certain topic
-;; @param cit - The citizen
-to-report average-bel-trust [ cit-memory cit ]
-  let topic-beliefs (map [ entry -> (item 0 entry) ] cit-memory)
-;  let cit-belief []
-;  set cit-belief (map [ b -> list b (dict-value brain b) ] topic-beliefs)
-;  show (word "Agent w/ belief " [brain] of cit)
-;  show cit-memory
-  let belief-vals (map [ b-mem -> (list (item 0 b-mem) (map [ mem -> cognitive-contagion-p cit (list (list (item 0 b-mem) mem)) ] (item 1 b-mem))) ] cit-memory)
-  let all-beliefs []
-  foreach belief-vals [ b-mem ->
-    foreach (item 1 b-mem) [ mem ->
-      set all-beliefs lput mem all-beliefs
-    ]
-  ]
-  report mean all-beliefs
-end
-
 ;; Connect or disconnect from another agent based off of
 ;; trust in that citizen and the global threshold set by zeta;
 ;; trust conditioned by topics that the message touched on.
@@ -1195,6 +1150,30 @@ to-report receive-message-py [ agent-brain message ]
   ;show(list-as-py-dict message false false)
   report py:runresult(
     word "receive_message(" (agent-brain-as-py-dict agent-brain) ", " (list-as-py-dict message true false) ", " spread-type ")"
+  )
+end
+
+;; Return citizen "cit" trust level in agent "oth" on topic "topic"
+;; calculated by trust-fn. This fetches the memory matrix from the
+;; citizen, conditioned by topic, of messages sent by agent oth,
+;; and then feeds them through the trust function to get a result.
+;;
+;; @param cit - The citizen to get trust for.
+;; @param oth - The other agent their trust is in.
+;; @param topic - The topic to fetch memory for (containing belief propositions).
+to-report citizen-trust-in-other [ cit oth topic ]
+  let topic-beliefs (dict-value topics topic)
+  let memory-by-belief [ dict-value agent-messages-memory oth ] of cit
+  let b [ brain ] of cit
+  let py-function ""
+  if citizen-trust-fn = "average-bel" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+
+  ]
+  let command (word "agent_trust_in_other_belief_func(" (list-as-py-dict-rec memory-by-belief true false) "," (agent-brain-as-py-dict b) "," (list-as-py-array topic-beliefs true) ", " py-function ")")
+
+  report py:runresult(
+    command
   )
 end
 
@@ -2341,7 +2320,7 @@ cognitive-translate
 cognitive-translate
 -10
 20
-0.0
+2.0
 1
 1
 NIL
