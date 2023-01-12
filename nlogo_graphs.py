@@ -8,6 +8,7 @@ Author: Nick Rabb (nick.rabb2@gmail.com)
 import networkx as nx
 import numpy as np
 import mag
+import math
 from networkx import community
 from messaging import dist_to_agent_brain
 from random import random
@@ -436,11 +437,14 @@ def graph_homophily(G):
   '''
   distances = []
   attrs = np.array([ list(G.nodes[node].values()) for node in G.nodes ])
-  adj = nx.adj_matrix(G)
+  adj = nx.adjacency_matrix(G)
   for node in G.nodes:
     norm_vector = np.array([ np.linalg.norm(attr - attrs[node]) for attr in attrs ])
     # Note: adj[node] * norm_vector sums the values already
-    distances.append((adj[node] * norm_vector)[0] / adj[node].sum())
+    # Note 2: The max(sum(), 1) is to protect against division by 0
+    # in the case of disconnected nodes
+    distances.append((adj[node] * norm_vector)[0] / max(adj[node].sum(),1))
+
   return (np.array(distances).mean(), np.array(distances).var())
 
 def graph_polarization(G, node_attr, max_attr_value):

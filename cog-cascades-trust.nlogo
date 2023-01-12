@@ -1352,9 +1352,10 @@ end
 to-report graph-homophily
   let citizen-arr list-as-py-array (map [ cit -> agent-brain-as-py-dict [brain] of citizen cit ] (range N)) false
   let edge-arr list-as-py-array (sort social-friends) true
-  report py:runresult(
+  let homophily py:runresult(
     (word "graph_homophily(nlogo_graph_to_nx(" citizen-arr "," edge-arr "))")
   )
+  report homophily
 end
 
 ;; Report the amount of homophily for a single citizen by measuring the average neighbor
@@ -2051,7 +2052,7 @@ SWITCH
 133
 show-social-friends?
 show-social-friends?
-1
+0
 1
 -1000
 
@@ -3027,7 +3028,7 @@ zeta-cit
 zeta-cit
 0
 1
-0.2
+0.1
 0.01
 1
 NIL
@@ -3081,7 +3082,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot graph-homophily"
+"default" 1.0 0 -16777216 true "" "plot (item 0 graph-homophily)"
 
 SLIDER
 397
