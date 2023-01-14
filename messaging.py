@@ -1,4 +1,5 @@
 import numpy as np
+import networkx as nx
 import math
 import json
 from data import *
@@ -304,6 +305,43 @@ def sigmoid_contagion_p(message_distance, exponent, translation):
   '''
   return (1 / (1 + math.exp(exponent * (message_distance - translation))))
   
+def one_spread_iteration(G, agent, message, bel_fn):
+  # N = len(G.nodes)
+  adj = nx.adjacency_matrix(G)
+  dists = np.array([ dist_to_agent_brain(G.nodes[i],message) for i in G.nodes ])
+  pf_vec = np.vectorize(bel_fn)
+  neighbors = adj[agent].toarray()
+  neighbors_bel = np.multiply(dists, neighbors)
+  ps = np.multiply(pf_vec(neighbors_bel),neighbors)
+  beliefs = (ps >= random()).astype(int)
+  return np.nonzero(beliefs)[1]
+
+def spread_from(G, agents, message, bel_fn, limit):
+  N = len(G.nodes)
+  adj = nx.adjacency_matrix(G)
+  dists = np.array([ dist_to_agent_brain(G.nodes[i],message) for i in G.nodes ])
+  pf_vec = np.vectorize(bel_fn)
+  # dp_arr = []
+  # memo_arr = np.array([1 for i in range(N)])
+  cont = True
+  curr_agents = np.array([ int(i in agents) for i in range(N) ])
+  p = np.copy(curr_agents)
+  while cont:
+    agents_p = np.multiply(pf_vec(np.multiply(curr_agents,dists)),curr_agents)
+    p = np.multiply(agents_p,p)
+    p = p * adj
+    # dp_arr.append(agents_p)
+    over_limit = (agents_p >= limit).astype(int)
+    # for i in range(N):
+    #   if over_limit[i] == 1:
+    #     new_agents += adj[i]
+    #     if agents_p memo_arr[i]
+    new_agents = (over_limit * adj > 0).astype(int)
+    curr_agents = new_agents
+    cont = over_limit.sum() > 0
+  return p
+
+
 '''
 Update an agent brain dictionary to change the value of agent[attr] to value.
 

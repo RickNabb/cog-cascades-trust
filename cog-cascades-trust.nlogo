@@ -528,7 +528,8 @@ to step
       let c self
       ask out-link-neighbors [
        ; show (word "Citizen " self " receiving message " (agent-brain-malleable-values c) " from citizen " c)
-        receive-message -1 self c (agent-brain-malleable-values c) 0
+;        receive-message -1 self c (agent-brain-malleable-values c) 0
+        spread-message -1 self c (agent-brain-malleable-values c) 0
       ]
     ]
   ]
@@ -647,7 +648,11 @@ to send-media-message-to-subscribers [ m message ]
     set messages-sent (lput (list mid message) messages-sent)
     ask my-subscribers [
       ask other-end [
-        receive-message m self m message mid
+        hear-message self mid message
+        if (believe-message? self message) [
+          believe-message self mid message
+          spread-message m self m message mid
+        ]
       ]
     ]
     set cur-message-id (cur-message-id + 1)
@@ -679,6 +684,85 @@ to-report cognitive-contagion-p [ cit message ]
     ]
   ]
   report p
+end
+
+to-report believe-message? [ cit message ]
+  if spread-type = "cognitive" [
+    let p cognitive-contagion-p self message
+    ;; Whether or not to believe the message
+    let roll random-float 1
+    if roll <= p [
+      report true
+    ]
+  ]
+  if spread-type = "simple" [
+    let roll random-float 1
+    if roll <= simple-spread-chance [
+      report true
+    ]
+  ]
+  if spread-type = "complex" [
+    let believing-neighbors 0
+    ask social-friend-neighbors [
+      let believes true
+      foreach message [ m ->
+        let attr (item 0 m)
+        let val (item 1 m)
+        set believes (believes and (dict-value brain attr = val))
+      ]
+      if believes [
+        set believing-neighbors believing-neighbors + 1
+      ]
+    ]
+    if (believing-neighbors / length sort social-friend-neighbors) >= complex-spread-ratio [
+      report true
+    ]
+  ]
+  report false
+end
+
+to receive-message-two [ source cit sender message message-id ]
+  if not (heard-message? cit ticks message-id) [
+    hear-message cit message-id message
+
+    ; Add message to memory for trust
+    if citizen-media-trust? [
+      add-agent-memory self source
+      add-message-to-memory self source message
+    ]
+    if citizen-citizen-trust? [
+      add-agent-memory self sender
+      add-message-to-memory self sender message
+    ]
+
+    if believe-message? cit message [
+      set brain (believe-message-py brain message)
+      believe-message self message-id message
+      spread-message source cit sender message message-id
+    ]
+  ]
+end
+
+to spread-message [ source cit sender message message-id ]
+  if not (heard-message? cit ticks message-id) [
+    hear-message cit message-id message
+
+    ; Add message to memory for trust
+    if citizen-media-trust? [
+      add-agent-memory self source
+      add-message-to-memory self source message
+    ]
+    if citizen-citizen-trust? [
+      add-agent-memory self sender
+      add-message-to-memory self sender message
+    ]
+    let next-believers one-spread-iteration cit message
+    foreach next-believers [ cit-id ->
+      let next-cit (citizen cit-id)
+      believe-message next-cit message-id message
+      spread-message source next-cit cit message message-id
+    ]
+  ]
 end
 
 ;; Have a citizen agent receive a message: hear it, either believe it or not, and subsequently either
@@ -795,6 +879,7 @@ end
 ;; @param message - The message itself.
 to believe-message [ cit message-id message ]
   ask cit [
+    set brain (believe-message-py brain message)
     let i (index-of-dict-entry messages-believed ticks)
     ifelse i != -1 [
       let messages-at-tick (item i messages-believed)
@@ -1172,6 +1257,25 @@ to-report citizen-trust-in-other [ cit oth topic ]
   ]
   let command (word "agent_trust_in_other_belief_func(" (list-as-py-dict-rec memory-by-belief true false) "," (agent-brain-as-py-dict b) "," (list-as-py-array topic-beliefs true) ", " py-function ")")
 
+  report py:runresult(
+    command
+  )
+end
+
+;; Perform one iteration of spread from a given citizen with a given message.
+;; This returns an array of neighbors who would believe the message with the
+;; currently set spread-type function and parameters.
+;;
+;; @param cit - The citizen sharing a message
+;; @param message - The message
+to-report one-spread-iteration [ cit message ]
+  let citizen-arr list-as-py-array (map [ c -> agent-brain-as-py-dict [brain] of citizen c ] (range N)) false
+  let edge-arr list-as-py-array (sort social-friends) true
+  let py-function ""
+  if spread-type = "cognitive" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+  ]
+  let command (word "one_spread_iteration(nlogo_graph_to_nx(" citizen-arr "," edge-arr ")," ([dict-value brain "ID"] of cit) "," (list-as-py-dict message true false) "," py-function ")")
   report py:runresult(
     command
   )
@@ -1725,11 +1829,11 @@ end
 GRAPHICS-WINDOW
 1028
 13
-1417
-403
+1406
+392
 -1
 -1
-9.030303030303031
+8.91
 1
 10
 1
@@ -1909,7 +2013,7 @@ SLIDER
 395
 424
 505
-458
+457
 epsilon
 epsilon
 0
@@ -2028,7 +2132,7 @@ SWITCH
 300
 99
 495
-133
+132
 show-social-friends?
 show-social-friends?
 0
@@ -2304,7 +2408,7 @@ SWITCH
 870
 949
 1024
-983
+982
 cognitive-exponent?
 cognitive-exponent?
 0
@@ -2320,7 +2424,7 @@ cognitive-translate
 cognitive-translate
 -10
 20
-2.0
+1.0
 1
 1
 NIL
@@ -2330,7 +2434,7 @@ SWITCH
 870
 994
 1025
-1028
+1027
 cognitive-translate?
 cognitive-translate?
 0
@@ -2717,7 +2821,7 @@ SLIDER
 840
 454
 970
-488
+487
 cit-init-normal-std
 cit-init-normal-std
 0
@@ -2987,7 +3091,7 @@ SLIDER
 684
 582
 801
-616
+615
 cit-memory-len
 cit-memory-len
 0
@@ -3002,7 +3106,7 @@ SLIDER
 853
 590
 993
-624
+623
 zeta-cit
 zeta-cit
 0
@@ -3027,7 +3131,7 @@ SWITCH
 683
 542
 847
-576
+575
 citizen-citizen-trust?
 citizen-citizen-trust?
 0
@@ -3038,7 +3142,7 @@ SWITCH
 512
 503
 664
-537
+536
 citizen-media-trust?
 citizen-media-trust?
 0
@@ -3067,12 +3171,12 @@ SLIDER
 397
 503
 510
-537
+536
 zeta-media
 zeta-media
 0
 1
-0.5
+0.75
 0.01
 1
 NIL
