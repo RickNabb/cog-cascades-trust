@@ -10,6 +10,7 @@ import os
 from enums import INSTITUTION_MESSAGING_TYPES, messaging_file_names
 from enums import INSTITUTION_ECOSYSTEM_TYPES
 from enums import eco_file_names
+from utils import curr_sigmoid_p, sigmoid_contagion_p
 
 """
 MESSAGES
@@ -285,25 +286,6 @@ def agent_trust_in_other_belief_func(agent_memory, agent_brain, topic_beliefs, b
   topic_mem_diffs = { bel: bf_vectorized(abs(mem - agent_brain[bel])) for (bel,mem) in topic_memories.items() }
   all_belief_vals = np.array([ val for val in topic_mem_diffs.values() ])
   return all_belief_vals.mean()
-
-def curr_sigmoid_p(exponent, translation):
-  '''
-  A curried sigmoid function used to calculate probabilty of belief
-  given a certain distance. This way, it is initialized to use exponent
-  and translation, and can return a function that can be vectorized to
-  apply with one param -- message_distance.
-
-  :param exponent: An exponent factor in the sigmoid function.
-  :param translation: A translation factor in the sigmoid function.
-  '''
-  return lambda message_distance: (1 / (1 + math.exp(exponent * (message_distance - translation))))
-
-def sigmoid_contagion_p(message_distance, exponent, translation):
-  '''
-  A sigmoid function to calcluate probability of belief in a given distance
-  between beliefs, governed by a few parameters.
-  '''
-  return (1 / (1 + math.exp(exponent * (message_distance - translation))))
   
 def one_spread_iteration(G, agent, message, bel_fn):
   # N = len(G.nodes)
@@ -341,7 +323,6 @@ def spread_from(G, agents, message, bel_fn, limit):
     cont = over_limit.sum() > 0
   return p
 
-
 '''
 Update an agent brain dictionary to change the value of agent[attr] to value.
 
@@ -352,6 +333,17 @@ Update an agent brain dictionary to change the value of agent[attr] to value.
 def update_agent_belief(agent, attr, value):
   agent[attr.name] = value
   return agent
+
+def topics_in_message(topics, message):
+  '''
+  Return topics contained in a message by set intersection
+
+  :param topics: a dictionary of topic -> belief proposition
+  :param message: a dictionary of belief proposition -> value
+  '''
+  message_beliefs = set(message.keys())
+  topics = { key: set(val) for key,val in topics.items() }
+  return [ key for key,val in topics.items() if len(val.intersection(message_beliefs)) > 0 ]
     
 """
 AGENT GENERAL FUNCTIONS

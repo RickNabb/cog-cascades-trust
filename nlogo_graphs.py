@@ -10,7 +10,7 @@ import numpy as np
 import mag
 import math
 from networkx import community
-from messaging import dist_to_agent_brain
+from messaging import dist_to_agent_brain, agent_trust_in_other_belief_func
 from random import random
 from kronecker import kronecker_pow
 from functools import reduce
@@ -18,6 +18,7 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from enums import INSTITUTION_ECOSYSTEM_TYPES, eco_file_names
 from data import HomophilicThetaRow, normal_dist_multiple
+from utils import curr_sigmoid_p, sigmoid_contagion_p
 
 '''
 Return a NetLogo-safe Erdos-Renyi graph from the NetworkX package.
@@ -276,6 +277,31 @@ def nlogo_graph_to_nx_with_media(citizens, friend_links, media, subscribers):
     G.add_edge(int(end1), int(end2))
   return G
 
+def citizen_media_connections_by_zeta(citizen_beliefs, media_beliefs, zeta, citizen_memory, topics, trust_fn):
+  '''
+  Return a matrix of media subscribers based off of citizen trust in media
+  beliefs -- but only for an initial state, as this generates a citizen
+  memory to be used for the trust function.
+
+  :param citizen_beliefs: An array of citizen brains but only their beliefs
+  :param media_beliefs: An array of media brains but only their beliefs
+  :param zeta: The trust threshold for citizen-media connection
+  :param citizen_memory: The length of memory citizens have
+  :param topics: A dictionary of topics and the beliefs they contain
+  :param trust_fn: A function to use for the trust calculation between
+  memories and citizen beliefs.
+  '''
+  citizen_memory_for_media = lambda media_belief: { bel: [media_belief[bel] for i in range(citizen_memory)] for bel in topic_beliefs }
+  trust_matrix = np.zeros((len(media_beliefs),len(citizen_beliefs)))
+
+  for topic,topic_beliefs in topics.items():
+    topic_trust = np.array(([[ agent_trust_in_other_belief_func(citizen_memory_for_media(media_belief),citizen_belief,topic_beliefs,trust_fn) for citizen_belief in citizen_beliefs ] for media_belief in media_beliefs]))
+    trust_matrix += topic_trust
+  return (trust_matrix / len(topics.keys()) >= zeta).astype(int)
+
+'''
+ANALYSIS FUNCTIONS
+'''
 
 def influencer_paths(G, subscribers, target):
   target_id = int(target.split(' ')[1].replace(')', ''))
@@ -313,6 +339,10 @@ def influencer_paths_within_distance(citizens, friend_links, subscribers, target
       threshold_paths[subscriber] = dist_path
       # threshold_paths[subscriber] = paths[subscriber]
   return threshold_paths
+
+'''
+MEASURE FUNCTIONS
+'''
 
 def simple_power_fn(p):
   '''

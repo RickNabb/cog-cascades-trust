@@ -111,9 +111,8 @@ to setup
       initialize-citizen-citizen-memory
     ]
     ifelse citizen-media-trust? [
-      connect-all-media
       initialize-citizen-media-memory
-      prune-media-connections
+      connect-media-zeta
     ] [
       connect-media-epsilon
     ]
@@ -373,6 +372,21 @@ to connect-media-epsilon
         create-subscriber-from m [ set weight media-citizen-influence ]
       ]
     ]
+  ]
+end
+
+to connect-media-zeta
+  let zeta-conns cit-media-connections-by-zeta
+  let j (length sort citizens)
+  foreach zeta-conns [ sub-list ->
+    let m (media j)
+    let i 0
+    foreach sub-list [ sub ->
+      let c citizen i
+      if sub = 1 [ ask m [ create-subscriber-to c ] ]
+      set i i + 1
+    ]
+    set j j + 1
   ]
 end
 
@@ -721,28 +735,6 @@ to-report believe-message? [ cit message ]
   report false
 end
 
-to receive-message-two [ source cit sender message message-id ]
-  if not (heard-message? cit ticks message-id) [
-    hear-message cit message-id message
-
-    ; Add message to memory for trust
-    if citizen-media-trust? [
-      add-agent-memory self source
-      add-message-to-memory self source message
-    ]
-    if citizen-citizen-trust? [
-      add-agent-memory self sender
-      add-message-to-memory self sender message
-    ]
-
-    if believe-message? cit message [
-      set brain (believe-message-py brain message)
-      believe-message self message-id message
-      spread-message source cit sender message message-id
-    ]
-  ]
-end
-
 to spread-message [ source cit sender message message-id ]
   if not (heard-message? cit ticks message-id) [
     hear-message cit message-id message
@@ -941,20 +933,14 @@ end
 ;; just sent a message to the citizen).
 ;; @param message - The message a citizen just received.
 to update-trust-connection [ cit oth message ]
-  let message-bels (map [ bel-val -> (item 0 bel-val) ] message)
-  let message-topics []
-  foreach topics [ topic ->
-    foreach message-bels [ bel ->
-      if member? bel (item 1 topic) and not member? (item 0 topic) message-topics [
-        set message-topics lput (item 0 topic) message-topics
-      ]
-    ]
-  ]
+  let message-topics topics-in-message message
+
   ;; TODO: This is an assumption that connections do not differ based on topic,
   ;; but rather that distrust in one topic may make or break a connection even
   ;; given trust in another topic
   let trust-by-topic map [ topic -> citizen-trust-in-other cit oth topic ] message-topics
   let trust mean trust-by-topic
+;  show trust-by-topic
   ask cit [
     if is-media? oth [
       if trust < zeta-media and in-link-neighbor? oth [
@@ -1253,9 +1239,26 @@ to-report citizen-trust-in-other [ cit oth topic ]
   let py-function ""
   if citizen-trust-fn = "average-bel" [
     set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
-
   ]
   let command (word "agent_trust_in_other_belief_func(" (list-as-py-dict-rec memory-by-belief true false) "," (agent-brain-as-py-dict b) "," (list-as-py-array topic-beliefs true) ", " py-function ")")
+
+  report py:runresult(
+    command
+  )
+end
+
+to-report cit-media-connections-by-zeta
+  let cit-beliefs list-as-py-array (map [ cit -> list-as-py-dict-rec (agent-brain-beliefs-as-dict cit) true false ] (sort citizens)) false
+  let media-beliefs list-as-py-array (map [ med -> list-as-py-dict-rec (agent-brain-beliefs-as-dict med) true false ] (sort medias)) false
+  let py-function ""
+
+;  show cit-beliefs
+;  show media-beliefs
+
+  if citizen-trust-fn = "average-bel" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+  ]
+  let command (word "citizen_media_connections_by_zeta(" cit-beliefs "," media-beliefs "," zeta-media "," cit-memory-len "," (list-as-py-dict-rec topics true true) "," py-function ")")
 
   report py:runresult(
     command
@@ -1294,6 +1297,12 @@ end
 to-report message-dist [ m1 m2 ]
   report py:runresult(
     word "message_distance(" (list-as-py-array m1 false) "," (list-as-py-array m2 false) ")"
+  )
+end
+
+to-report topics-in-message [ message ]
+  report py:runresult(
+    word "topics_in_message(" (list-as-py-dict-rec topics true true) "," (list-as-py-dict message true false) ")"
   )
 end
 
@@ -1628,6 +1637,16 @@ to-report agent-brain-beliefs-as-list [ agent ]
   let malleables (dict-value b "malleable")
   let bels filter [ bel -> member? (item 0 bel) priors or member? (item 0 bel) malleables ] [brain] of agent
   report map [ bel -> item 1 bel ] bels
+end
+
+;; Get the beliefs of an agent as a list, not a dictionary including their name
+;; @param agent - The turtle to get beliefs for
+;; @reports A list of lists containing only the integer belief values for each belief in order
+to-report agent-brain-beliefs-as-dict [ agent ]
+  let b [brain] of agent
+  let priors (dict-value b "prior")
+  let malleables (dict-value b "malleable")
+  report filter [ bel -> member? (item 0 bel) priors or member? (item 0 bel) malleables ] [brain] of agent
 end
 
 to-report media-sent-messages-reduced [ med ]
@@ -2018,7 +2037,7 @@ epsilon
 epsilon
 0
 belief-resolution
-1.0
+2.0
 1
 1
 NIL
@@ -2135,7 +2154,7 @@ SWITCH
 132
 show-social-friends?
 show-social-friends?
-0
+1
 1
 -1000
 
@@ -2424,7 +2443,7 @@ cognitive-translate
 cognitive-translate
 -10
 20
-1.0
+0.0
 1
 1
 NIL
@@ -3134,7 +3153,7 @@ SWITCH
 575
 citizen-citizen-trust?
 citizen-citizen-trust?
-0
+1
 1
 -1000
 
@@ -3176,7 +3195,7 @@ zeta-media
 zeta-media
 0
 1
-0.75
+0.2
 0.01
 1
 NIL
