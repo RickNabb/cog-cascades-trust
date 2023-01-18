@@ -690,13 +690,14 @@ to send-media-message-to-subscribers [ m message ]
     ] [
       ask my-subscribers [
         ask other-end [
-          if not (heard-message? self ticks mid) [
-            hear-message self mid message
-            if (believe-message? self message) [
-              believe-message self mid message
-              spread-message m self m message mid
-            ]
-          ]
+;          if not (heard-message? self ticks mid) [
+;            hear-message self mid message
+;            if (believe-message? self message) [
+;              believe-message self mid message
+;              spread-message m self m message mid
+;            ]
+;          ]
+          receive-message m self m message mid
         ]
       ]
     ]
@@ -2200,7 +2201,7 @@ N
 N
 0
 1000
-250.0
+100.0
 10
 1
 NIL
@@ -2939,7 +2940,7 @@ CHOOSER
 institution-tactic
 institution-tactic
 "predetermined" "broadcast-brain" "appeal-mean" "appeal-mode" "appeal-median" "max-reach-no-chain"
-1
+2
 
 TEXTBOX
 28
@@ -3021,7 +3022,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-3.0
+20.0
 1
 1
 NIL
@@ -3216,7 +3217,7 @@ SWITCH
 536
 citizen-media-trust?
 citizen-media-trust?
-0
+1
 1
 -1000
 
@@ -3247,7 +3248,7 @@ zeta-media
 zeta-media
 0
 1
-0.46
+0.35
 0.01
 1
 NIL
