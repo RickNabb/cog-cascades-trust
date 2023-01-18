@@ -376,7 +376,7 @@ to connect-media-epsilon
 end
 
 to connect-media-zeta
-  let zeta-conns cit-media-connections-by-zeta
+  let zeta-conns cit-media-initial-connections-by-zeta
   let j (length sort citizens)
   foreach zeta-conns [ sub-list ->
     let m (media j)
@@ -535,6 +535,7 @@ end
 to step
   if media-agents? [
     institutions-send-messages
+;    connect-media-zeta
   ]
   if contagion-on? [
     ;; In the case where we do not have influencer agents, simply do a contagion from the agent perspective
@@ -660,12 +661,42 @@ to send-media-message-to-subscribers [ m message ]
   ask m [
     let mid cur-message-id
     set messages-sent (lput (list mid message) messages-sent)
-    ask my-subscribers [
-      ask other-end [
-        hear-message self mid message
-        if (believe-message? self message) [
-          believe-message self mid message
-          spread-message m self m message mid
+
+    ifelse matrix-spread? [
+      let spread-res spread-from-media m message 0.001
+      let heard (dict-value spread-res "heard")
+      let believed (dict-value spread-res "believed")
+      let heard-from (dict-value spread-res "heard_from")
+
+      let i 0
+      repeat length heard [
+        let cit (citizen i)
+        if (item i heard) = 1 [
+          hear-message cit mid message
+          if citizen-media-trust? [
+            add-agent-memory cit m
+            add-message-to-memory cit m message
+          ]
+        ]
+        if (item i believed) = 1 [ believe-message cit mid message ]
+        foreach (dict-value heard-from (word i)) [ sender ->
+          if citizen-citizen-trust? [
+            add-agent-memory cit sender
+            add-message-to-memory cit sender message
+          ]
+        ]
+        set i i + 1
+      ]
+    ] [
+      ask my-subscribers [
+        ask other-end [
+          if not (heard-message? self ticks mid) [
+            hear-message self mid message
+            if (believe-message? self message) [
+              believe-message self mid message
+              spread-message m self m message mid
+            ]
+          ]
         ]
       ]
     ]
@@ -736,22 +767,27 @@ to-report believe-message? [ cit message ]
 end
 
 to spread-message [ source cit sender message message-id ]
-  if not (heard-message? cit ticks message-id) [
-    hear-message cit message-id message
-
-    ; Add message to memory for trust
-    if citizen-media-trust? [
-      add-agent-memory self source
-      add-message-to-memory self source message
-    ]
-    if citizen-citizen-trust? [
-      add-agent-memory self sender
-      add-message-to-memory self sender message
-    ]
-    let next-believers one-spread-iteration cit message
-    foreach next-believers [ cit-id ->
-      let next-cit (citizen cit-id)
+  ; Add message to memory for trust
+  if citizen-media-trust? [
+    add-agent-memory self source
+    add-message-to-memory self source message
+  ]
+  if citizen-citizen-trust? [
+    add-agent-memory self sender
+    add-message-to-memory self sender message
+  ]
+  let next-believers one-spread-iteration cit message
+  foreach next-believers [ cit-id ->
+    let next-cit (citizen cit-id)
+    if not (heard-message? next-cit ticks message-id) [
+      hear-message next-cit message-id message
       believe-message next-cit message-id message
+      ask next-cit [ update-citizen ]
+
+    ; Update connections
+;      if citizen-media-trust? [ update-trust-connection self source message ]
+;      if citizen-citizen-trust? [ update-trust-connection self sender message ]
+
       spread-message source next-cit cit message message-id
     ]
   ]
@@ -1247,7 +1283,7 @@ to-report citizen-trust-in-other [ cit oth topic ]
   )
 end
 
-to-report cit-media-connections-by-zeta
+to-report cit-media-initial-connections-by-zeta
   let cit-beliefs list-as-py-array (map [ cit -> list-as-py-dict-rec (agent-brain-beliefs-as-dict cit) true false ] (sort citizens)) false
   let media-beliefs list-as-py-array (map [ med -> list-as-py-dict-rec (agent-brain-beliefs-as-dict med) true false ] (sort medias)) false
   let py-function ""
@@ -1258,7 +1294,25 @@ to-report cit-media-connections-by-zeta
   if citizen-trust-fn = "average-bel" [
     set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
   ]
-  let command (word "citizen_media_connections_by_zeta(" cit-beliefs "," media-beliefs "," zeta-media "," cit-memory-len "," (list-as-py-dict-rec topics true true) "," py-function ")")
+  let command (word "citizen_media_initial_connections_by_zeta(" cit-beliefs "," media-beliefs "," zeta-media "," cit-memory-len "," (list-as-py-dict-rec topics true true) "," py-function ")")
+
+  report py:runresult(
+    command
+  )
+end
+
+to-report cit-media-connections-by-zeta
+  let cit-beliefs list-as-py-array (map [ cit -> list-as-py-dict-rec (agent-brain-beliefs-as-dict cit) true false ] (sort citizens)) false
+  let cit-memories list-as-py-array (map [ cit -> list-as-py-dict-rec ([agent-messages-memory] of cit) true false ] (sort citizens)) false
+  let py-function ""
+
+;  show cit-beliefs
+;  show media-beliefs
+
+  if citizen-trust-fn = "average-bel" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+  ]
+  let command (word "citizen_media_connections_by_zeta(" cit-beliefs "," cit-memories "," zeta-media "," cit-memory-len "," (length sort medias) "," (list-as-py-dict-rec topics true true) "," py-function ")")
 
   report py:runresult(
     command
@@ -1279,6 +1333,21 @@ to-report one-spread-iteration [ cit message ]
     set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
   ]
   let command (word "one_spread_iteration(nlogo_graph_to_nx(" citizen-arr "," edge-arr ")," ([dict-value brain "ID"] of cit) "," (list-as-py-dict message true false) "," py-function ")")
+  report py:runresult(
+    command
+  )
+end
+
+to-report spread-from-media [ med message limit ]
+  let citizen-arr list-as-py-array (map [ c -> agent-brain-as-py-dict [brain] of citizen c ] (range N)) false
+  let edge-arr list-as-py-array (sort social-friends) true
+  let nlogo-graph-py (word "nlogo_graph_to_nx(" citizen-arr "," edge-arr ")")
+  let cits map [ sub -> [ dict-value brain "ID" ] of sub ] (sort [ subscriber-neighbors ] of med)
+  let py-function ""
+  if spread-type = "cognitive" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+  ]
+  let command (word "spread_from(nlogo_graph_to_nx(" citizen-arr "," edge-arr ")," (list-as-py-array cits false) "," (list-as-py-dict message true false) "," py-function "," limit ")")
   report py:runresult(
     command
   )
@@ -1811,6 +1880,7 @@ end
 
 ; [ [ 'key1' val ] [ 'key2' [ 'key3' val2 ] ] [ 'key4' [ val3 val4 val5 ] ] ]
 to-report list-as-py-dict-rec [ l key-quotes? val-quotes? ]
+  if length l = 0 [ report "{}" ]
   let py-dict "{ "
   let i 1
   foreach l [ el ->
@@ -2037,7 +2107,7 @@ epsilon
 epsilon
 0
 belief-resolution
-2.0
+1.0
 1
 1
 NIL
@@ -2154,7 +2224,7 @@ SWITCH
 132
 show-social-friends?
 show-social-friends?
-1
+0
 1
 -1000
 
@@ -2717,7 +2787,7 @@ message-repeats
 message-repeats
 0
 10
-2.0
+1.0
 1
 1
 NIL
@@ -2869,7 +2939,7 @@ CHOOSER
 institution-tactic
 institution-tactic
 "predetermined" "broadcast-brain" "appeal-mean" "appeal-mode" "appeal-median" "max-reach-no-chain"
-2
+1
 
 TEXTBOX
 28
@@ -2951,7 +3021,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-15.0
+3.0
 1
 1
 NIL
@@ -3073,24 +3143,6 @@ graph-homophily?
 1
 -1000
 
-PLOT
-1487
-473
-1861
-636
-chi-sq-citizens-media
-time
-p-value
-0.0
-10.0
-0.0
-1.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "let cit-dist agent-brain-distribution citizens \"A\"\nlet media-dist agent-brain-distribution medias \"A\"\nlet chisq chi-sq cit-dist media-dist\nplot (item 1 chisq)"
-
 SLIDER
 25
 215
@@ -3169,10 +3221,10 @@ citizen-media-trust?
 -1000
 
 PLOT
-1487
-642
-1864
-804
+1488
+470
+1865
+632
 homophily
 NIL
 NIL
@@ -3195,7 +3247,7 @@ zeta-media
 zeta-media
 0
 1
-0.2
+0.46
 0.01
 1
 NIL
@@ -3340,6 +3392,17 @@ TEXTBOX
 11
 0.0
 1
+
+SWITCH
+538
+179
+673
+213
+matrix-spread?
+matrix-spread?
+0
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?

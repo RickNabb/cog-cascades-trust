@@ -299,29 +299,53 @@ def one_spread_iteration(G, agent, message, bel_fn):
   return np.nonzero(beliefs)[1]
 
 def spread_from(G, agents, message, bel_fn, limit):
+  '''
+  Spread a message from a set of agents through the graph G, based on
+  belief function bel_fn. This stops once all the new agents probabilities
+  of believing (done in rounds) is below limit.
+
+  :param G: The graph of citizen agents.
+  :param agents: The initial set of agents to spread from.
+  :param message: The message to spread.
+  :param bel_fn: The belief function to use when an agent is presented with
+  a message.
+  :param limit: The probability to stop at once all new agents reached with
+  the message have p < limit.
+  '''
   N = len(G.nodes)
   adj = nx.adjacency_matrix(G)
   dists = np.array([ dist_to_agent_brain(G.nodes[i],message) for i in G.nodes ])
   pf_vec = np.vectorize(bel_fn)
-  # dp_arr = []
-  # memo_arr = np.array([1 for i in range(N)])
   cont = True
   curr_agents = np.array([ int(i in agents) for i in range(N) ])
-  p = np.copy(curr_agents)
+  heard_agents = np.zeros(N)
+  heard_from = { n: [] for n in range(N) }
+  p = np.multiply(pf_vec(np.multiply(curr_agents,dists)),curr_agents)
   while cont:
-    agents_p = np.multiply(pf_vec(np.multiply(curr_agents,dists)),curr_agents)
-    p = np.multiply(agents_p,p)
-    p = p * adj
-    # dp_arr.append(agents_p)
-    over_limit = (agents_p >= limit).astype(int)
-    # for i in range(N):
-    #   if over_limit[i] == 1:
-    #     new_agents += adj[i]
-    #     if agents_p memo_arr[i]
-    new_agents = (over_limit * adj > 0).astype(int)
+    heard_agents += curr_agents
+    heard_matrix = np.tile(heard_agents, (N,1))
+    adj_minus_heard = np.clip(adj - heard_matrix, 0, 1)
+
+    for agent in range(N):
+      if curr_agents[agent] == 1: 
+        adj_row = adj_minus_heard[agent]
+        for connection in range(N):
+          if adj_row[0,connection] == 1:
+            heard_from[connection].append(agent)
+
+    new_agents = np.clip(curr_agents * adj_minus_heard, 0, 1)[0]
+    new_agents = np.ravel(new_agents.sum(axis=0))
+    propagation = p * adj_minus_heard
+    propagation = np.ravel(propagation.sum(axis=0))
+    new_agents_bel_p = np.multiply(pf_vec(np.multiply(new_agents,dists)),new_agents)
+    next_p = np.multiply(new_agents_bel_p,propagation)
+    p = p + next_p
+
+    new_p_over_limit = (next_p >= limit).astype(int)
     curr_agents = new_agents
-    cont = over_limit.sum() > 0
-  return p
+    cont = new_p_over_limit.sum() > 0
+  rand = np.random.rand(N)
+  return {'heard': heard_agents, 'believed': (p >= rand).astype(int), 'heard_from': heard_from}
 
 '''
 Update an agent brain dictionary to change the value of agent[attr] to value.

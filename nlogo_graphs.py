@@ -277,7 +277,28 @@ def nlogo_graph_to_nx_with_media(citizens, friend_links, media, subscribers):
     G.add_edge(int(end1), int(end2))
   return G
 
-def citizen_media_connections_by_zeta(citizen_beliefs, media_beliefs, zeta, citizen_memory, topics, trust_fn):
+def citizen_media_connections_by_zeta(citizen_beliefs, citizen_memories, zeta, citizen_memory_len, num_media, topics, trust_fn):
+  '''
+  Return a matrix of media subscribers based off of citizen trust in media
+  based on their memory of media messaging.
+
+  :param citizen_beliefs: An array of citizen brains but only their beliefs
+  :param citizen_memories: An array of citizen memories for media
+  :param zeta: The trust threshold for citizen-media connection
+  :param citizen_memory_len: The length of memory citizens have
+  :param num_media: The number of media in the graph
+  :param topics: A dictionary of topics and the beliefs they contain
+  :param trust_fn: A function to use for the trust calculation between
+  memories and citizen beliefs.
+  '''
+  trust_matrix = np.zeros((len(media_beliefs),len(citizen_beliefs)))
+
+  for topic,topic_beliefs in topics.items():
+    topic_trust = np.array(([[ agent_trust_in_other_belief_func(citizen_memories[c][f'(media ${len(citizen_beliefs)+i})'],citizen_beliefs[c],topic_beliefs,trust_fn) for c in range(len(citizen_beliefs)) ] for i in range(num_media)]))
+    trust_matrix += topic_trust
+  return (trust_matrix / len(topics.keys()) >= zeta).astype(int)
+
+def citizen_media_initial_connections_by_zeta(citizen_beliefs, media_beliefs, zeta, citizen_memory, topics, trust_fn):
   '''
   Return a matrix of media subscribers based off of citizen trust in media
   beliefs -- but only for an initial state, as this generates a citizen
