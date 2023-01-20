@@ -291,10 +291,12 @@ def citizen_media_connections_by_zeta(citizen_beliefs, citizen_memories, zeta, c
   :param trust_fn: A function to use for the trust calculation between
   memories and citizen beliefs.
   '''
-  trust_matrix = np.zeros((len(media_beliefs),len(citizen_beliefs)))
+  num_citizens = len(citizen_beliefs)
+  trust_matrix = np.zeros((num_citizens,num_media))
 
   for topic,topic_beliefs in topics.items():
-    topic_trust = np.array(([[ agent_trust_in_other_belief_func(citizen_memories[c][f'(media ${len(citizen_beliefs)+i})'],citizen_beliefs[c],topic_beliefs,trust_fn) for c in range(len(citizen_beliefs)) ] for i in range(num_media)]))
+    # topic_trust = np.array(([[ agent_trust_in_other_belief_func(citizen_memories[c][f'(media ${len(citizen_beliefs)+i})'],citizen_beliefs[c],topic_beliefs,trust_fn) if f'(media ${len(citizen_beliefs)+i})' in citizen_memories[c] else -1 for c in range(len(citizen_beliefs)) ] for i in range(num_media)]))
+    topic_trust = np.array(([[ agent_trust_in_other_belief_func(citizen_memories[c][f'(media {num_citizens+i})'],citizen_beliefs[c],topic_beliefs,trust_fn) if f'(media {num_citizens+i})' in citizen_memories[c] else -1 for i in range(num_media) ] for c in range(num_citizens)]))
     trust_matrix += topic_trust
   return (trust_matrix / len(topics.keys()) >= zeta).astype(int)
 

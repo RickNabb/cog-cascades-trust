@@ -111,8 +111,8 @@ to setup
       initialize-citizen-citizen-memory
     ]
     ifelse citizen-media-trust? [
+      connect-media-initial-zeta
       initialize-citizen-media-memory
-      connect-media-zeta
     ] [
       connect-media-epsilon
     ]
@@ -375,7 +375,7 @@ to connect-media-epsilon
   ]
 end
 
-to connect-media-zeta
+to connect-media-initial-zeta
   let zeta-conns cit-media-initial-connections-by-zeta
   let j (length sort citizens)
   foreach zeta-conns [ sub-list ->
@@ -387,6 +387,21 @@ to connect-media-zeta
       set i i + 1
     ]
     set j j + 1
+  ]
+end
+
+to connect-media-zeta
+  let zeta-conns cit-media-connections-by-zeta
+  let i 0
+  foreach zeta-conns [ sub-list ->
+    let cit (citizen i)
+    let j (length sort citizens)
+    foreach sub-list [ sub ->
+      let m (media j)
+      if sub = 1 [ ask cit [ create-subscriber-from m ] ]
+      set j j + 1
+    ]
+    set i i + 1
   ]
 end
 
@@ -534,8 +549,12 @@ end
 
 to step
   if media-agents? [
+    show "Sending messages from institutions"
     institutions-send-messages
-;    connect-media-zeta
+    if matrix-trust-conn? [
+      show "Reconnecting by zeta"
+      connect-media-zeta
+    ]
   ]
   if contagion-on? [
     ;; In the case where we do not have influencer agents, simply do a contagion from the agent perspective
@@ -664,11 +683,13 @@ to send-media-message-to-subscribers [ m message ]
 
     ifelse matrix-spread? [
       let spread-res spread-from-media m message 0.001
+      show "Got spread-res"
       let heard (dict-value spread-res "heard")
       let believed (dict-value spread-res "believed")
       let heard-from (dict-value spread-res "heard_from")
 
       let i 0
+      show "Starting update"
       repeat length heard [
         let cit (citizen i)
         if (item i heard) = 1 [
@@ -676,17 +697,27 @@ to send-media-message-to-subscribers [ m message ]
           if citizen-media-trust? [
             add-agent-memory cit m
             add-message-to-memory cit m message
+            if not matrix-trust-conn? [
+              update-trust-connection cit m message
+            ]
+          ]
+          foreach (dict-value heard-from (word i)) [ sender ->
+            if citizen-citizen-trust? [
+              add-agent-memory cit sender
+              add-message-to-memory cit sender message
+              if not matrix-trust-conn? [
+                update-trust-connection cit sender message
+              ]
+            ]
           ]
         ]
         if (item i believed) = 1 [ believe-message cit mid message ]
-        foreach (dict-value heard-from (word i)) [ sender ->
-          if citizen-citizen-trust? [
-            add-agent-memory cit sender
-            add-message-to-memory cit sender message
-          ]
-        ]
+
+        ask cit [ update-citizen ]
+
         set i i + 1
       ]
+      show "Finished update"
     ] [
       ask my-subscribers [
         ask other-end [
@@ -786,9 +817,10 @@ to spread-message [ source cit sender message message-id ]
       ask next-cit [ update-citizen ]
 
     ; Update connections
+;      if not matrix-trust-conn? [
 ;      if citizen-media-trust? [ update-trust-connection self source message ]
 ;      if citizen-citizen-trust? [ update-trust-connection self sender message ]
-
+;      ]
       spread-message source next-cit cit message message-id
     ]
   ]
@@ -832,8 +864,10 @@ to receive-message [ source cit sender message message-id ]
           ]
         ]
         update-citizen
-        if citizen-media-trust? [ update-trust-connection self source message ]
-        if citizen-citizen-trust? [ update-trust-connection self sender message ]
+        if not matrix-trust-conn? [
+          if citizen-media-trust? [ update-trust-connection self source message ]
+          if citizen-citizen-trust? [ update-trust-connection self sender message ]
+        ]
       ]
 
       if spread-type = "simple" [
@@ -1308,7 +1342,7 @@ to-report cit-media-connections-by-zeta
   let py-function ""
 
 ;  show cit-beliefs
-;  show media-beliefs
+;  show cit-memories
 
   if citizen-trust-fn = "average-bel" [
     set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
@@ -1917,13 +1951,13 @@ to-report tuple-list-as-py-dict [ l key-quotes? val-quotes? ]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-1028
-13
-1406
-392
+1029
+14
+1413
+399
 -1
 -1
-8.91
+9.061
 1
 10
 1
@@ -2201,7 +2235,7 @@ N
 N
 0
 1000
-100.0
+500.0
 10
 1
 NIL
@@ -3217,7 +3251,7 @@ SWITCH
 536
 citizen-media-trust?
 citizen-media-trust?
-1
+0
 1
 -1000
 
@@ -3398,9 +3432,20 @@ SWITCH
 538
 179
 673
-213
+212
 matrix-spread?
 matrix-spread?
+0
+1
+-1000
+
+SWITCH
+539
+218
+694
+252
+matrix-trust-conn?
+matrix-trust-conn?
 0
 1
 -1000

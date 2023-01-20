@@ -283,8 +283,9 @@ def agent_trust_in_other_belief_func(agent_memory, agent_brain, topic_beliefs, b
   '''
   bf_vectorized = np.vectorize(bel_func)
   topic_memories = { bel: np.array(list(map(lambda el: int(el), mem))) for (bel, mem) in agent_memory.items() if bel in topic_beliefs }
-  topic_mem_diffs = { bel: bf_vectorized(abs(mem - agent_brain[bel])) for (bel,mem) in topic_memories.items() }
+  topic_mem_diffs = { bel: bf_vectorized(abs(mem - agent_brain[bel])) for (bel,mem) in topic_memories.items() if len(mem) > 0 }
   all_belief_vals = np.array([ val for val in topic_mem_diffs.values() ])
+  # print(f'trust between {agent_memory} and {agent_brain} is {all_belief_vals.mean()}')
   return all_belief_vals.mean()
   
 def one_spread_iteration(G, agent, message, bel_fn):
