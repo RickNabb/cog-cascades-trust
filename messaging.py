@@ -320,6 +320,7 @@ def spread_from(G, agents, message, bel_fn, limit):
   cont = True
   curr_agents = np.array([ int(i in agents) for i in range(N) ])
   heard_agents = np.zeros(N)
+  believed_agents = np.zeros(N)
   heard_from = { n: [] for n in range(N) }
   p = np.multiply(pf_vec(np.multiply(curr_agents,dists)),curr_agents)
   while cont:
@@ -334,9 +335,14 @@ def spread_from(G, agents, message, bel_fn, limit):
           if adj_row[0,connection] == 1:
             heard_from[connection].append(agent)
 
-    new_agents = np.clip(curr_agents * adj_minus_heard, 0, 1)[0]
+    rolls = np.multiply(curr_agents, np.random.rand(N))
+    successes = (np.multiply(p,curr_agents) > rolls).astype(int)
+    believed_agents += successes
+
+    new_agents = np.clip(successes * adj_minus_heard, 0, 1)[0]
     new_agents = np.ravel(new_agents.sum(axis=0))
-    propagation = p * adj_minus_heard
+    # Mask out the believers so only they propagate
+    propagation = np.multiply(p, successes) * adj_minus_heard
     propagation = np.ravel(propagation.sum(axis=0))
     new_agents_bel_p = np.multiply(pf_vec(np.multiply(new_agents,dists)),new_agents)
     next_p = np.multiply(new_agents_bel_p,propagation)
@@ -345,8 +351,7 @@ def spread_from(G, agents, message, bel_fn, limit):
     new_p_over_limit = (next_p >= limit).astype(int)
     curr_agents = new_agents
     cont = new_p_over_limit.sum() > 0
-  rand = np.random.rand(N)
-  return {'heard': heard_agents, 'believed': (p >= rand).astype(int), 'heard_from': heard_from}
+  return {'heard': heard_agents, 'believed': believed_agents, 'heard_from': heard_from}
 
 '''
 Update an agent brain dictionary to change the value of agent[attr] to value.
