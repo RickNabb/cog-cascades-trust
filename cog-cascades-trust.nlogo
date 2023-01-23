@@ -392,6 +392,9 @@ end
 
 to connect-media-zeta
   let zeta-conns cit-media-connections-by-zeta
+
+  ask medias [ ask subscribers [ die ] ]
+
   let i 0
   foreach zeta-conns [ sub-list ->
     let cit (citizen i)
@@ -549,10 +552,10 @@ end
 
 to step
   if media-agents? [
-    show "Sending messages from institutions"
+;    show "Sending messages from institutions"
     institutions-send-messages
     if matrix-trust-conn? [
-      show "Reconnecting by zeta"
+;      show "Reconnecting by zeta"
       connect-media-zeta
     ]
   ]
@@ -683,13 +686,13 @@ to send-media-message-to-subscribers [ m message ]
 
     ifelse matrix-spread? [
       let spread-res spread-from-media m message 0.001
-      show "Got spread-res"
+;      show "Got spread-res"
       let heard (dict-value spread-res "heard")
       let believed (dict-value spread-res "believed")
       let heard-from (dict-value spread-res "heard_from")
 
       let i 0
-      show "Starting update"
+;      show "Starting update"
       repeat length heard [
         let cit (citizen i)
         if (item i heard) = 1 [
@@ -717,7 +720,7 @@ to send-media-message-to-subscribers [ m message ]
 
         set i i + 1
       ]
-      show "Finished update"
+;      show "Finished update"
     ] [
       ask my-subscribers [
         ask other-end [
@@ -2155,7 +2158,7 @@ SWITCH
 91
 show-media-connections?
 show-media-connections?
-0
+1
 1
 -1000
 
@@ -2235,7 +2238,7 @@ N
 N
 0
 1000
-500.0
+200.0
 10
 1
 NIL
@@ -2914,7 +2917,7 @@ CHOOSER
 citizen-init-dist
 citizen-init-dist
 "uniform" "normal" "polarized"
-1
+2
 
 TEXTBOX
 680
@@ -3217,7 +3220,7 @@ zeta-cit
 zeta-cit
 0
 1
-0.1
+0.25
 0.01
 1
 NIL
@@ -3240,7 +3243,7 @@ SWITCH
 575
 citizen-citizen-trust?
 citizen-citizen-trust?
-1
+0
 1
 -1000
 
@@ -3282,7 +3285,7 @@ zeta-media
 zeta-media
 0
 1
-0.35
+0.25
 0.01
 1
 NIL
