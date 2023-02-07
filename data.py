@@ -238,7 +238,7 @@ def nlogo_parse_chunk(chunk):
 FILE I/O
 '''
 
-DATA_DIR = 'D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem'
+DATA_DIR = 'D:/school/grad-school/Tufts/research/cog-cascades-trust'
 
 def save_graph(path, cit, cit_social, media, media_sub):
     cit_arr = nlogo_list_to_arr(nlogo_replace_agents(cit, [ 'citizen' ]))
@@ -473,9 +473,10 @@ def plot_nlogo_multi_chart_stacked(props, multi_data):
   var_vecs = []
   rev_keys_int = sorted(multi_data_keys_int, reverse=True)
   rev_keys = list(map(lambda el: f'{el}', rev_keys_int))
+  multi_data_has_multiple = lambda multi_data_entry: type(multi_data_entry[0]) == type(np.array(0)) and len(multi_data_entry) > 1
   for key in rev_keys:
-    mean_vec = multi_data[key].mean(0)
-    var_vec = multi_data[key].var(0)
+    mean_vec = multi_data[key].mean(0) if multi_data_has_multiple(multi_data[key])  else multi_data[key]
+    var_vec = multi_data[key].var(0) if multi_data_has_multiple(multi_data[key]) else np.zeros(len(mean_vec))
 
     # Add padding for the initial values so those are displayed in the graph
     mean_vec = np.insert(mean_vec, 0, [ mean_vec[0] for i in range(init_dist_width) ])
@@ -519,9 +520,12 @@ def plot_nlogo_multi_chart_line(props, multi_data):
     resolution = int(max(multi_data_keys_int))+1
     line_color = lambda key: f"#{rgb_to_hex([ 255 - round((255/max(resolution-1,1))*int(key)), 0, round((255/max(resolution-1,1)) * int(key)) ])}"
  
+  multi_data_has_multiple = lambda multi_data_entry: type(multi_data_entry[0]) == type(np.array(0)) and len(multi_data_entry) > 1
+ 
   for key in multi_data:
-    mean_vec = multi_data[key].mean(0)
-    var_vec = multi_data[key].var(0)
+    mean_vec = multi_data[key].mean(0) if multi_data_has_multiple(multi_data[key])  else multi_data[key]
+    var_vec = multi_data[key].var(0) if multi_data_has_multiple(multi_data[key]) else np.zeros(len(mean_vec))
+    # print(multi_data[key])
     # print(var_vec)
     ax.plot(mean_vec, c=line_color(key))
     ax.fill_between(range(x_min, len(mean_vec)), mean_vec-var_vec, mean_vec+var_vec, facecolor=f'{line_color(key)}44')
@@ -559,10 +563,12 @@ def plot_nlogo_histogram(props, multi_data):
     multi_data_keys_int = list(map(lambda el: int(el), multi_data.keys()))
     resolution = int(max(multi_data_keys_int))+1
     bar_color = lambda key: f"#{rgb_to_hex([ 255 - round((255/max(resolution-1,1))*int(key)), 0, round((255/max(resolution-1,1)) * int(key)) ])}"
+
+  multi_data_has_multiple = lambda multi_data_entry: type(multi_data_entry[0]) == type(np.array(0)) and len(multi_data_entry) > 1
  
   for key in multi_data:
-    mean_vec = multi_data[key].mean(0)
-    var_vec = multi_data[key].var(0)
+    mean_vec = multi_data[key].mean(0) if multi_data_has_multiple(multi_data[key])  else multi_data[key]
+    var_vec = multi_data[key].var(0) if multi_data_has_multiple(multi_data[key]) else np.zeros(len(mean_vec))
     # print(var_vec)
     ax.plot(mean_vec, c=bar_color(key))
     ax.fill_between(range(x_min, len(mean_vec)), mean_vec-var_vec, mean_vec+var_vec, facecolor=f'{bar_color(key)}44')
@@ -1008,44 +1014,26 @@ def get_all_multidata(param_combos, plots, path):
       multi_datas[(combo,plot_name)] = multi_data
   return multi_datas
 
-def process_predetermined_ecosystems_outputs(path):
-  brain_types = ['discrete']
-  contagion_types = [ 'simple', 'complex', 'cognitive' ]
-  cognitive_fns = [ 'sigmoid-stubborn' ]
-  message_files = [ '50-50', 'default', 'gradual' ]
-  graph_types = [ 'erdos-renyi', 'watts-strogatz', 'barabasi-albert' ]
-  media_ecosystem = [ 'two-polarized', 'two-mid', 'three-polarized', 'three-mid' ]
-  init_cit_dist = ['normal', 'uniform']
-  media_tactics = [ 'predetermined' ]
-
-  process_exp_outputs(
-    [media_tactics,media_ecosystem,brain_types,init_cit_dist,contagion_types,message_files,cognitive_fns,graph_types],
-    {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
-    'polarization': [PLOT_TYPES.LINE],
-    'disagreement': [PLOT_TYPES.LINE],
-    'homophily': [PLOT_TYPES.LINE]},
-    path)
-
-def process_conditions_to_polarization_cognitive(path):
+def process_parameter_sweep_test_exp(path):
   cognitive_translate = ['0', '1', '2']
-  epsilon = ['0', '1', '2']
-  institution_tactic = ['broadcast-brain', 'appeal-mean', 'appeal-median', 'appeal-mode']
+  institution_tactic = ['broadcast-brain', 'appeal-mean']
+  media_ecosystem_n = ['2','3','5','10','15','20']
   media_ecosystem_dist = [ 'uniform', 'normal', 'polarized' ]
-  ba_m = ['3' ]
-  graph_types = [ 'ba-homophilic', 'barabasi-albert' ]
-  graph_types = [ 'ba-homophilic']
   init_cit_dist = ['normal', 'uniform', 'polarized']
+  zeta_media = ['0.25','0.5','0.75','1']
+  zeta_cit = ['0.25','0.5','0.75','1']
+  citizen_memory_length = ['5','15','25']
+  ba_m = ['3']
+  graph_type = ['barabasi-albert']
   repetition = list(map(str, range(2)))
 
   process_exp_outputs(
-    [cognitive_translate,institution_tactic,media_ecosystem_dist,init_cit_dist,epsilon,graph_types,ba_m,repetition],
-    { 'polarization': [PLOT_TYPES.LINE] },
+    [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,graph_type,ba_m,repetition],
     {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
     'polarization': [PLOT_TYPES.LINE],
-    'disagreement': [PLOT_TYPES.LINE],
-    'homophily': [PLOT_TYPES.LINE],
-    'chi-sq-cit-media': [PLOT_TYPES.LINE]},
+    'homophily': [PLOT_TYPES.LINE]},
     path)
+
 
 def get_conditions_to_polarization_multidata(path):
   cognitive_translate = ['0', '1', '2']
@@ -1381,41 +1369,3 @@ def polarizing_results_analysis_by_param(df, params):
   return (combos, param_dfs, ratios)
 
   # return combos
-
-def process_polarizing_conditions_cognitive(path):
-  cognitive_translate = ['0']
-  epsilon = ['0', '1', '2', '3']
-  institution_tactic = ['broadcast-brain']
-  media_ecosystem_dist = [ 'uniform', 'polarized' ]
-  ba_m = ['3' ]
-  graph_types = [ 'ba-homophilic']
-  init_cit_dist = ['normal', 'uniform']
-  repetition = list(map(str, range(4)))
-
-  process_exp_outputs(
-    [cognitive_translate,institution_tactic,media_ecosystem_dist,init_cit_dist,epsilon,graph_types,ba_m,repetition],
-    {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
-    'polarization': [PLOT_TYPES.LINE],
-    'disagreement': [PLOT_TYPES.LINE],
-    'homophily': [PLOT_TYPES.LINE],
-    'chi-sq-cit-media': [PLOT_TYPES.LINE]},
-    path)
-
-def process_nonpolarizing_conditions_cognitive(path):
-  cognitive_translate = ['0']
-  epsilon = ['0', '1']
-  institution_tactic = ['broadcast-brain', 'appeal-mean', 'appeal-median']
-  media_ecosystem_dist = [ 'normal', 'polarized' ]
-  ba_m = ['3' ]
-  graph_types = [ 'ba-homophilic']
-  init_cit_dist = ['normal', 'uniform']
-  repetition = list(map(str, range(4)))
-
-  process_exp_outputs(
-    [cognitive_translate,institution_tactic,media_ecosystem_dist,init_cit_dist,epsilon,graph_types,ba_m,repetition],
-    {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
-    'polarization': [PLOT_TYPES.LINE],
-    'disagreement': [PLOT_TYPES.LINE],
-    'homophily': [PLOT_TYPES.LINE],
-    'chi-sq-cit-media': [PLOT_TYPES.LINE]},
-    path)
