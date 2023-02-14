@@ -500,6 +500,41 @@ def graph_homophily(G):
 
   return (np.array(distances).mean(), np.array(distances).var())
 
+def graph_fragmentation(cit_beliefs, media_beliefs, subscribers):
+  '''
+  Takes a measure of fragmentation in the graph based on first-level neighbor
+  distance, only for media neighbors. Details can be found in Rabb et al. 2023
+
+  :param cit_beliefs: A list of citizen belief dictionaries.
+  :param media_beliefs: A list of media belief dictionaries.
+  :param subscribers: A list of subscribers lists for each media agent.
+  '''
+  distances = []
+  N = len(cit_beliefs)
+  cit_belief_vectors = np.array([ list(bel.values()) for bel in cit_beliefs ])
+  media_belief_vectors = np.array([ list(bel.values()) for bel in media_beliefs ])
+  adj = []
+  for media in range(len(media_beliefs)):
+    adj.append([ agent in subscribers[media] for agent in range(N) ])
+  # Transpose so we can loop through citizens
+  adj = np.matrix(adj).astype(int).transpose()
+
+  # for media in range(len(media_beliefs)):
+  for citizen in range(N):
+    norm_vector = np.array([ np.linalg.norm(media_belief - cit_belief_vectors[citizen]) for media_belief in media_belief_vectors ])
+    # print(norm_vector)
+    # print(adj[citizen])
+    # norm_vector = np.array([ np.linalg.norm(citizen_belief - media_belief_vectors[media]) for citizen_belief in cit_belief_vectors ])
+
+    # Note: adj[node] * norm_vector sums the values already
+    # Note 2: The max(sum(), 1) is to protect against division by 0
+    # in the case of disconnected nodes
+    distances.append((norm_vector * adj[citizen].transpose())[0,0] / max(adj[citizen].sum(),1))
+    # distances.append((norm_vector * adj[media].transpose())[0,0] / max(adj[media].sum(),1))
+
+  # return distances
+  return (np.array(distances).mean(), np.array(distances).var())
+
 def graph_polarization(G, node_attr, max_attr_value):
   '''
   Take a measure of global polarization across the graph from a measure
