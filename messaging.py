@@ -330,9 +330,8 @@ def spread_from(G, agents, message, bel_fn, limit):
 
     for agent in range(N):
       if curr_agents[agent] == 1: 
-        adj_row = adj_minus_heard[agent]
         for connection in range(N):
-          if adj_row[0,connection] == 1:
+          if adj_minus_heard[agent,connection] == 1:
             heard_from[connection].append(agent)
 
     rolls = np.multiply(curr_agents, np.random.rand(N))
