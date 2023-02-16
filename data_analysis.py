@@ -1,4 +1,3 @@
-from email import message
 from enum import Enum
 from random import *
 from utils import *
@@ -14,7 +13,10 @@ from scipy.stats import chi2_contingency, truncnorm
 from sklearn.linear_model import LinearRegression
 import math
 import matplotlib.pyplot as plt
+from nlogo_io import *
 # import statsmodels.formula.api as smf
+
+DATA_DIR = 'D:/school/grad-school/Tufts/research/cog-cascades-trust'
 
 """
 BELIEF ATTRIBUTES
@@ -81,76 +83,6 @@ def random_sample(attr):
 def test_random_sample():
   print(random_sample(Attributes.VG))
 
-"""
-RELEVANT EMPIRICAL DATA
-"""
-
-# Attribute A distribution values
-HomophilicThetaRow = lambda row, l, p, s, d: [ 1/(1 + d + s * abs(pow(row - i, p))) for i in range(0, l) ]
-SquareHomophilicThetaRow = lambda row, l: HomophilicThetaRow(row, l, 2, 5, 0.25)
-LinearHomophilicThetaRow = lambda row, l: HomophilicThetaRow(row, l, 1, 5, 0.25)
-
-HeterophilicThetaRow = lambda row, l, p, s, d: [ (abs(pow(i-row,p)))/(s*pow(max(abs(l-row-1), row)+d,p)) for i in range(0, l) ]
-SquareHeterophilicThetaRow = lambda row, l: HeterophilicThetaRow(row, l, 2, 2, 0)
-LinearHeterophilicThetaRow = lambda row, l: HeterophilicThetaRow(row, l, 1, 2, 0)
-
-# AVals = np.ones(NUM_BELIEF_BUCKETS) #[1, 1, 1, 1, 1, 1, 1]
-# ADist = create_discrete_dist_sm(AVals)
-AMAGDefaultTheta = lambda resolution: np.ones((resolution,resolution)) * 0.05
-AMAGHomophilicTheta = lambda resolution: np.matrix([ HomophilicThetaRow(i, resolution, 2, 50, 5) for i in range(0, resolution) ])
-AMAGHeterophilicTheta = lambda resolution: np.matrix([ HeterophilicThetaRow(i, resolution, 2, 5, 1) for i in range(0, resolution) ])
-
-def uniform_dist_multiple(maxx, n, k):
-  '''
-  Return a series of samples drawn from a uniform distribution from [0, max] where each of en samples has k entries.
-
-  :param maxx: The maximum to draw from.
-  :param n: The number of k entry samples to draw.
-  :param k: The number of entries per n sample.
-  '''
-  samples = [ uniform_dist(maxx, n) for i in range(k) ]
-  return [ [ samples[i][j] for i in range(k) ] for j in range(n) ]
-
-def uniform_dist(maxx, n):
-  '''
-  Draw n samples from a uniform distribution from [0, maxx]
-
-  :param maxx: The maximum to draw from.
-  :param n: The number of samples to take.
-  '''
-  return np.array(list(map(lambda el: math.floor(el), np.random.uniform(low=0, high = maxx, size=n))))
-
-def normal_dist_multiple(maxx, mean, sigma, n, k):
-  '''
-  Return a series of samples drawn from a normal distribution from
-  [0, max] with mean and std deviation specified, where each of en
-  samples has k entries.
-
-  :param maxx: The maximum to draw from.
-  :param mean: The mean of the distribution.
-  :param sigma: The standard deviation of the distribution.
-  :param n: The number of k entry samples to draw.
-  :param k: The number of entries per n sample.
-  '''
-  samples = [ normal_dist(maxx, mean, sigma, n) for i in range(k) ]
-  return [ [ samples[i][j] for i in range(k) ] for j in range(n) ]
-
-def normal_dist(maxx, mean, sigma, n):
-  '''
-  Draw n samples from a truncated normal distribution from [0, maxx]
-  with mean and sigma specified.
-
-  :param maxx: The maximum to draw from.
-  :param mean: The mean of the distribution.
-  :param sigma: The standard deviation of the distribution.
-  :param n: The number of samples to take.
-  '''
-  lower=-0.5
-  upper=maxx+0.5
-  # mean=math.floor(resolution/2)
-  # sigma=mean/3
-  dist = truncnorm((lower - mean) / sigma, (upper - mean) / sigma, loc=mean, scale=sigma)
-  return np.array(list(map(lambda el: round(el), dist.rvs(n))))
 
 AttributeValues = {
   Attributes.A.name: {
@@ -173,136 +105,6 @@ AttributeMAGThetas = {
     'heterophilic': AMAGHeterophilicTheta
   }   
 }
-
-'''
-NETLOGO PARSING
-'''
-
-def nlogo_list_to_arr(list_str):
-    return [ el.replace('[', '').strip().split(' ') for el in list_str[1:len(list_str)-1].split(']') ]
-
-def nlogo_replace_agents(string, types):
-    for type in types:
-        string = string.replace(f'({type} ', f'{type}_')
-    return string.replace(')','')
-
-'''
-Parse a NetLogo mixed dictionary into a Python dictionary. This is a nightmare.
-But it works.
-
-:param list_str: The NetLogo dictionary as a string.
-'''
-def nlogo_mixed_list_to_dict(list_str):
-  return nlogo_parse_chunk(list_str)
-
-def nlogo_mixed_list_to_dict_rec(list_str):
-  # print(f'processing {list_str}')
-  if list_str[0] == '[' and list_str[len(list_str)-1] == ']' and list_str.count('[') == 1:
-    return nlogo_parse_chunk(list_str)
-
-  d = {}
-  chunk = ''
-  stack_count = 0
-  for i in range(1, len(list_str)-1):
-    chunks = []
-    char = list_str[i]
-    chunk += char
-    if char == '[':
-      stack_count += 1
-    elif char == ']':
-      stack_count -= 1
-
-      if stack_count == 0:
-        # print(f'parsing chunk: {chunk}')
-        parsed = nlogo_parse_chunk(chunk)
-        # print(f'parsed: {parsed}')
-        d[list(parsed.keys())[0]] = list(parsed.values())[0]
-        chunk = ''
-      # chunks[stack_count] += char
-  return d
-
-def nlogo_parse_chunk(chunk):
-  chunk = chunk.strip().replace('"','')
-  if chunk.count('[') > 1 and chunk[0] == '[':
-    return nlogo_mixed_list_to_dict_rec(chunk[chunk.index('['):].strip())
-  elif chunk.count('[') > 1 or chunk[0] != '[':
-    return { chunk[0:chunk.index('[')].strip(): nlogo_mixed_list_to_dict_rec(chunk[chunk.index('['):].strip()) }
-
-  pieces = chunk.strip().replace('[','').replace(']','').split(' ')
-  if len(pieces) == 2:
-    return { pieces[0]: pieces[1] }
-  else:
-    return pieces
-
-'''
-FILE I/O
-'''
-
-DATA_DIR = 'D:/school/grad-school/Tufts/research/cog-cascades-trust'
-
-def save_graph(path, cit, cit_social, media, media_sub):
-    cit_arr = nlogo_list_to_arr(nlogo_replace_agents(cit, [ 'citizen' ]))
-    cit_social_arr = nlogo_list_to_arr(nlogo_replace_agents(cit_social, [ 'citizen' ]))
-    media_arr = nlogo_list_to_arr(nlogo_replace_agents(media, [ 'media' ]))
-    media_sub_arr = nlogo_list_to_arr(nlogo_replace_agents(media_sub, [ 'media', 'citizen' ]))
-
-    f = open(path, 'w')
-    f.write(f'CITIZENS {len(cit_arr)-1}\n')
-    for c in filter(lambda el: len(el) > 1, cit_arr):
-        f.write(f'{c[0].replace("citizen_","")},{c[1]}\n')
-
-    f.write(f'CITIZEN_SOCIAL_LINKS {len(cit_social_arr)-1}\n')
-    for c in filter(lambda el: len(el) > 1, cit_social_arr):
-        f.write(f'{c[0].replace("citizen_","")},{c[1].replace("citizen_","")}\n')
-
-    f.write(f'MEDIA {len(media_arr)-1}\n')
-    for c in filter(lambda el: len(el) > 1, media_arr):
-        f.write(f'{c[0].replace("media_","")},{c[1]}\n')
-
-    f.write(f'MEDIA_SUB_LINKS {len(media_sub_arr)-1}\n')
-    for c in filter(lambda el: len(el) > 1, media_sub_arr):
-        ordered = sorted(c)
-        f.write(f'{ordered[0].replace("citizen_","")},{ordered[1].replace("media_","")}\n')
-
-    f.close()
-
-def read_subrange(lines, into):
-    for line in lines:
-        into.append(line.split(','))
-
-def read_graph(path):
-    f = open(path, 'r')
-    raw = f.read()
-    f.close()
-    cit = []
-    cit_social = []
-    media_arr = []
-    media_sub_arr = []
-    lines = raw.split('\n')
-    i = 0
-
-    while i < len(lines):
-      line = lines[i]
-      if 'CITIZEN_SOCIAL_LINKS' in line:
-        n = int(line.split(' ')[1])
-        read_subrange(lines[i+1:i+1+n], cit_social)
-        i += n+1
-      elif 'CITIZEN' in line:
-        n = int(line.split(' ')[1])
-        read_subrange(lines[i+1:i+1+n], cit)
-        i += n+1
-      elif 'MEDIA_SUB_LINKS' in line:
-        n = int(line.split(' ')[1])
-        read_subrange(lines[i+1:i+1+n], media_sub_arr)
-        i += n+1
-      elif 'MEDIA' in line:
-        n = int(line.split(' ')[1])
-        read_subrange(lines[i+1:i+1+n], media_arr)
-        i += n+1
-      else:
-        i += 1
-    return (cit, cit_social, media_arr, media_sub_arr)
-
 
 """
 ANALYSIS FUNCTIONS
@@ -368,7 +170,7 @@ def process_chart_data(path):
     # df = pd.DataFrame(data=data_sets[split[0]][1:], columns=data_sets[split[0]][0])
     df = pd.DataFrame(data=data_sets[split[0]][1:], columns=data_sets[split[0]][0])
     del df['pen down?']
-    chart_props['color'][split[0]] = df['color'].iloc[1]
+    chart_props['color'][split[0]] = df['color'].iloc[0] if len(df['color']) > 0 else 0
     del df['color']
     # del df['x']
     dfs[split[0]] = df
@@ -387,26 +189,37 @@ def process_multi_chart_data(in_path, in_filename='percent-agent-beliefs'):
   props = []
   multi_data = []
   print(f'process_multi_chart_data for {in_path}/{in_filename}')
-  for file in os.listdir(in_path):
-    if in_filename in file:
-      data = process_chart_data(f'{in_path}/{file}')
-      model_params = data[0]
-      props.append(data[1])
-      multi_data.append(data[2])
+  if os.path.isdir(in_path):
+    for file in os.listdir(in_path):
+      if in_filename in file:
+        data = process_chart_data(f'{in_path}/{file}')
+        model_params = data[0]
+        props.append(data[1])
+        multi_data.append(data[2])
 
-  means = { key: [] for key in multi_data[0].keys() }
-  for data in multi_data:
-    for key in data.keys():
-      data_vector = np.array(data[key]['y']).astype('float32')
-      if means[key] == []:
-        means[key] = data_vector
-      else:
-        means[key] = np.vstack([means[key], data_vector])
+    full_data_size = int(model_params['tick-end']) + 1
+    means = { key: [] for key in multi_data[0].keys() }
+    for data in multi_data:
+      for key in data.keys():
+        data_vector = np.array(data[key]['y']).astype('float32')
 
-  final_props = props[0]
-  props_y_max = np.array([ float(prop['y max']) for prop in props ])
-  final_props['y max'] = props_y_max.max()
-  return (means, final_props, model_params)
+        if len(data_vector) != full_data_size:
+          # TODO: Need to do something here that reports the error
+          print('ERROR parsing multi chart data -- data length did not equal number of ticks')
+          continue
+
+        if means[key] == []:
+          means[key] = data_vector
+        else:
+          means[key] = np.vstack([means[key], data_vector])
+
+    final_props = props[0]
+    props_y_max = np.array([ float(prop['y max']) for prop in props ])
+    final_props['y max'] = props_y_max.max()
+    return (means, final_props, model_params)
+  else:
+    print(f'ERROR: Path not found {in_path}')
+    return (-1, -1, -1)
 
 '''
 Given some multi-chart data, plot it and save the plot.
@@ -996,7 +809,9 @@ def process_exp_outputs(param_combos, plots, path):
     for (plot_name, plot_types) in plots.items():
       # print(plot_name, plot_types)
       (multi_data, props, model_params) = process_multi_chart_data(f'{path}/{"/".join(combo)}', plot_name)
-      plot_multi_chart_data(plot_types, multi_data, props, f'{path}/results', f'{"-".join(combo)}_{plot_name}-agg-chart')
+      # If there was no error processing the data
+      if multi_data != -1:
+        plot_multi_chart_data(plot_types, multi_data, props, f'{path}/results', f'{"-".join(combo)}_{plot_name}-agg-chart')
 
 def get_all_multidata(param_combos, plots, path):
   combos = []
@@ -1017,12 +832,12 @@ def get_all_multidata(param_combos, plots, path):
 def process_parameter_sweep_test_exp(path):
   cognitive_translate = ['0', '1', '2']
   institution_tactic = ['broadcast-brain', 'appeal-mean']
-  media_ecosystem_n = ['2','3','5','10','15','20']
+  media_ecosystem_n = ['20']
   media_ecosystem_dist = [ 'uniform', 'normal', 'polarized' ]
   init_cit_dist = ['normal', 'uniform', 'polarized']
   zeta_media = ['0.25','0.5','0.75','1']
   zeta_cit = ['0.25','0.5','0.75','1']
-  citizen_memory_length = ['5','15','25']
+  citizen_memory_length = ['5']
   ba_m = ['3']
   graph_type = ['barabasi-albert']
   repetition = list(map(str, range(2)))
@@ -1030,9 +845,30 @@ def process_parameter_sweep_test_exp(path):
   process_exp_outputs(
     [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,graph_type,ba_m,repetition],
     {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
-    'polarization': [PLOT_TYPES.LINE],
-    'homophily': [PLOT_TYPES.LINE]},
+    'polarization': [PLOT_TYPES.LINE]},
+    # 'polarization': [PLOT_TYPES.LINE],
+    # 'homophily': [PLOT_TYPES.LINE]},
     path)
+
+def process_parameter_sweep_tinytest_exp(path):
+  cognitive_translate = ['0', '1', '2']
+  epsilon = ['0']
+  institution_tactic = ['broadcast-brain', 'appeal-mean']
+  media_ecosystem_n = ['20']
+  media_ecosystem_dist = [ 'uniform', 'normal', 'polarized' ]
+  init_cit_dist = ['normal', 'uniform', 'polarized']
+  citizen_memory_length = ['5']
+  repetition = list(map(str, range(2)))
+
+  process_exp_outputs(
+    [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,epsilon,citizen_memory_length,repetition],
+    {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
+    'polarization': [PLOT_TYPES.LINE]},
+    # 'polarization': [PLOT_TYPES.LINE],
+    # 'fragmentation': [PLOT_TYPES.LINE],
+    # 'homophily': [PLOT_TYPES.LINE]},
+    path)
+
 
 
 def get_conditions_to_polarization_multidata(path):

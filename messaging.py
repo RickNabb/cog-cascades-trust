@@ -2,7 +2,6 @@ import numpy as np
 import networkx as nx
 import math
 import json
-from data import *
 from random import *
 from copy import deepcopy
 import sys
@@ -290,7 +289,11 @@ def agent_trust_in_other_belief_func(agent_memory, agent_brain, topic_beliefs, b
   
 def one_spread_iteration(G, agent, message, bel_fn):
   # N = len(G.nodes)
-  adj = nx.adjacency_matrix(G)
+  adj = []
+  for i in G.nodes:
+    adj.append([ (i,j) in G.edges for j in G.nodes ])
+  adj = np.matrix(adj).astype(int)
+  # adj = nx.adjacency_matrix(G)
   dists = np.array([ dist_to_agent_brain(G.nodes[i],message) for i in G.nodes ])
   pf_vec = np.vectorize(bel_fn)
   neighbors = adj[agent].toarray()
@@ -313,8 +316,13 @@ def spread_from(G, agents, message, bel_fn, limit):
   :param limit: The probability to stop at once all new agents reached with
   the message have p < limit.
   '''
+  max_loops = 10
+  cur_loop = 0
   N = len(G.nodes)
-  adj = nx.adjacency_matrix(G)
+  adj = []
+  for i in G.nodes:
+    adj.append([ (i,j) in G.edges for j in G.nodes ])
+  adj = np.matrix(adj).astype(int)
   dists = np.array([ dist_to_agent_brain(G.nodes[i],message) for i in G.nodes ])
   pf_vec = np.vectorize(bel_fn)
   cont = True
@@ -323,7 +331,7 @@ def spread_from(G, agents, message, bel_fn, limit):
   believed_agents = np.zeros(N)
   heard_from = { n: [] for n in range(N) }
   p = np.multiply(pf_vec(np.multiply(curr_agents,dists)),curr_agents)
-  while cont:
+  while cont and cur_loop < max_loops:
     heard_agents += curr_agents
     heard_matrix = np.tile(heard_agents, (N,1))
     adj_minus_heard = np.clip(adj - heard_matrix, 0, 1)
@@ -350,6 +358,7 @@ def spread_from(G, agents, message, bel_fn, limit):
     new_p_over_limit = (next_p >= limit).astype(int)
     curr_agents = new_agents
     cont = new_p_over_limit.sum() > 0
+    cur_loop += 1
   return {'heard': heard_agents, 'believed': believed_agents, 'heard_from': heard_from}
 
 '''

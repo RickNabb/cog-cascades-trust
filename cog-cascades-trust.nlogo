@@ -27,6 +27,7 @@ globals [
   mag-g
   cur-message-id
   messages-over-time
+  beliefs-over-time
   citizen-priors
   citizen-malleables
   topics
@@ -100,6 +101,8 @@ to setup
 
   set topics [ ["Q1" ["A"]] ]
 
+  set beliefs-over-time []
+
   ask patches [
     set pcolor white
   ]
@@ -118,6 +121,12 @@ to setup
     ]
   ] [
     read-graph
+    if citizen-citizen-trust? [
+      initialize-citizen-citizen-memory
+    ]
+    if citizen-media-trust? [
+      initialize-citizen-media-memory
+    ]
   ]
 
   ;; Load message data sets to be used by influencer agents
@@ -153,11 +162,13 @@ to setup-py
   py:setup "python"
   py:run "import sys"
   py:run "import os"
-  py:run "import kronecker as kron"
-  py:run "from data import *"
+;  py:run "import kronecker as kron"
+;  py:run "import data_analysis"
+  py:run "from utils import *"
   py:run "from messaging import *"
-  py:run "import mag as MAG"
+;  py:run "import mag as MAG"
   py:run "from nlogo_graphs import *"
+  py:run "from nlogo_io import *"
 end
 
 to create-agents
@@ -552,6 +563,7 @@ to go
 end
 
 to step
+  set beliefs-over-time (lput (list ticks (map [ cit -> agent-brain-beliefs-as-dict cit ] (sort citizens))) beliefs-over-time)
   if media-agents? [
 ;    show "Sending messages from institutions"
     institutions-send-messages
@@ -686,7 +698,7 @@ to send-media-message-to-subscribers [ m message ]
     set messages-sent (lput (list mid message) messages-sent)
 
     ifelse matrix-spread? [
-      let spread-res spread-from-media m message 0.001
+      let spread-res spread-from-media m message 0.01
 ;      show "Got spread-res"
       let heard (dict-value spread-res "heard")
       let believed (dict-value spread-res "believed")
@@ -706,11 +718,12 @@ to send-media-message-to-subscribers [ m message ]
             ]
           ]
           foreach (dict-value heard-from (word i)) [ sender ->
+            let cit-sender (citizen sender)
             if citizen-citizen-trust? [
-              add-agent-memory cit sender
-              add-message-to-memory cit sender message
+              add-agent-memory cit cit-sender
+              add-message-to-memory cit cit-sender message
               if not matrix-trust-conn? [
-                update-trust-connection cit sender message
+                update-trust-connection cit cit-sender message
               ]
             ]
           ]
@@ -946,7 +959,14 @@ end
 ;; @param message - The message itself.
 to believe-message [ cit message-id message ]
   ask cit [
-    set brain (believe-message-py brain message)
+;    st brain (believe-message-py brain message)
+    foreach message [ entry ->
+      let bel-key item 0 entry
+      let bel-val item 1 entry
+      ask cit [
+        set brain (replace-dict-item brain bel-key bel-val)
+      ]
+    ]
     let i (index-of-dict-entry messages-believed ticks)
     ifelse i != -1 [
       let messages-at-tick (item i messages-believed)
@@ -1044,7 +1064,7 @@ end
 to add-agent-memory [ cit agente ]
   ask cit [
     let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
-    let entry dict-value agent-messages-memory agente
+    let entry (dict-value agent-messages-memory agente)
     if entry = -1 [
       set agent-messages-memory (lput (list agente (map [ b -> list b [] ] all-beliefs)) agent-messages-memory)
     ]
@@ -1091,6 +1111,7 @@ to read-graph
     set brain create-agent-brain id citizen-priors citizen-malleables [] (list a)
     set messages-heard []
     set messages-believed []
+    set agent-messages-memory []
 
     set size 0.5
     setxy random-xcor random-ycor
@@ -1678,6 +1699,16 @@ to-report chi-sq [ dist1 dist2 ]
     set i i + 1
   ]
   report py:runresult((word "chi2_contingency(" (list-as-py-array dist false) ")"))
+end
+
+;; Write out the message-related data that the simulation has stored: agent beliefs at each time step,
+;; messages that agents heard, messages that agents believed, messages that institutions sent.
+to output-message-data [ path uniqueid ]
+  let bel-over-time-py list-as-py-array (map [ tick-entry -> (word "{" (item 0 tick-entry) ": " (list-as-py-array (map [ bels -> list-as-py-dict-rec bels true false ] (item 1 tick-entry)) false) "}") ] beliefs-over-time) false
+  let messages-heard-py list-as-py-array (map [ cit -> [ list-as-py-array (map [ tick-entry -> (word "{" (item 0 tick-entry) ": " (list-as-py-array (item 1 tick-entry) false) "}") ] messages-heard) false ] of cit ] (sort citizens)) false
+  let messages-believed-py list-as-py-array (map [ cit -> [ list-as-py-array (map [ tick-entry -> (word "{" (item 0 tick-entry) ": " (list-as-py-array (item 1 tick-entry) false) "}") ] messages-believed) false ] of cit ] (sort citizens)) false
+  let messages-sent-py list-as-py-array (map [ med -> [ list-as-py-dict-rec messages-sent true false ] of med ] (sort medias)) false
+  py:run (word "write_message_data('" path "'," "'" uniqueid "'," bel-over-time-py "," messages-heard-py "," messages-believed-py "," messages-sent-py ")")
 end
 
 ;;;;;;;;;;;;;;;
@@ -2335,7 +2366,7 @@ SWITCH
 862
 load-graph?
 load-graph?
-1
+0
 1
 -1000
 
@@ -2345,7 +2376,7 @@ INPUTBOX
 244
 929
 load-graph-path
-D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/25-Jan-2023-parameter-sweep-TEST/graphs/2-appeal-mean-polarized-20-normal-0.75-0.75-15-barabasi-albert-3-1.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/16-Feb-2023-parameter-sweep-low-res/graphs/0-broadcast-brain-polarized-15-polarized-1-0.75-5-1.csv
 1
 0
 String
@@ -2356,7 +2387,7 @@ INPUTBOX
 247
 995
 save-graph-path
-C:/Users/nrabb_000/Documents/school/grad-school/Tufts/research/projects/cog-cascades-trust/simulation-data/13-Feb-2023-parameter-sweep-TEST/graphs/0-broadcast-brain-uniform-20-uniform-0-5-barabasi-albert-3-1.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/16-Feb-2023-parameter-sweep-low-res/graphs/0-broadcast-brain-polarized-15-polarized-0.75-0.75-5-0.csv
 1
 0
 String
@@ -2437,7 +2468,7 @@ tick-end
 tick-end
 30
 1000
-250.0
+200.0
 1
 1
 NIL
@@ -2449,7 +2480,7 @@ INPUTBOX
 526
 239
 sim-output-dir
-C:/Users/nrabb_000/Documents/school/grad-school/Tufts/research/projects/cog-cascades-trust/simulation-data/
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/
 1
 0
 String
@@ -2931,7 +2962,7 @@ CHOOSER
 citizen-init-dist
 citizen-init-dist
 "uniform" "normal" "polarized"
-1
+2
 
 TEXTBOX
 680
@@ -3032,7 +3063,7 @@ CHOOSER
 media-ecosystem-dist
 media-ecosystem-dist
 "uniform" "normal" "polarized"
-0
+2
 
 SLIDER
 483
@@ -3073,7 +3104,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-20.0
+15.0
 1
 1
 NIL
@@ -3204,7 +3235,7 @@ repetition
 repetition
 0
 10
-0.0
+1.0
 1
 1
 NIL
@@ -3234,7 +3265,7 @@ zeta-cit
 zeta-cit
 0
 1
-1.0
+0.75
 0.01
 1
 NIL
@@ -3257,7 +3288,7 @@ SWITCH
 575
 citizen-citizen-trust?
 citizen-citizen-trust?
-1
+0
 1
 -1000
 
@@ -3268,7 +3299,7 @@ SWITCH
 536
 citizen-media-trust?
 citizen-media-trust?
-1
+0
 1
 -1000
 
@@ -3283,12 +3314,12 @@ NIL
 0.0
 10.0
 0.0
-10.0
+1.0
 true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot (item 0 graph-homophily)"
+"default" 1.0 0 -16777216 true "" "plot 1 / (1 + (item 0 graph-homophily))"
 
 SLIDER
 397
@@ -3299,7 +3330,7 @@ zeta-media
 zeta-media
 0
 1
-1.0
+0.75
 0.01
 1
 NIL
@@ -3948,7 +3979,12 @@ export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-
     <setup>setup-py
 let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-parameter-sweep-TEST")
 let graphs-path (word run-dir "/graphs")
-let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" media-ecosystem-n "-" citizen-init-dist "-" zeta-media "-" zeta-cit "-" cit-memory-len "-" graph-type "-" ba-m "-" repetition ".csv")
+carefully [
+  if not (py:runresult (word "os.path.isdir('" graphs-path "')")) [
+    py:run (word "create_nested_dirs('" graphs-path "')")
+  ]
+] [ ]
+let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" media-ecosystem-n "-" citizen-init-dist "-" zeta-cit "-" zeta-media "-" cit-memory-len "-" repetition ".csv")
 ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
   set load-graph? true
   set load-graph-path graph-file
@@ -3956,27 +3992,30 @@ ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
 ] [
   set load-graph? false
   set save-graph-path graph-file
-  py:run (word "create_nested_dirs('" graphs-path "')")
   setup
   save-graph
 ]
-set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" media-ecosystem-n "/" citizen-init-dist "/" zeta-media "/" zeta-cit "/" cit-memory-len "/" graph-type "/" ba-m "/" repetition)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-set behavior-rand random 10000
-export-plot "cit-a-histogram" (word contagion-dir "/" behavior-rand "_cit-a-histogram.csv")
-export-plot "media-a-histogram" (word contagion-dir "/" behavior-rand "_media-a-histogram.csv")</setup>
+set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" media-ecosystem-n "/" citizen-init-dist "/" zeta-cit "/" zeta-media "/" cit-memory-len "/" repetition)
+carefully [
+  if not (py:runresult (word "os.path.isdir('" contagion-dir "')")) [
+    py:run (word "create_nested_dirs('" contagion-dir "')")
+  ]
+] [ ]</setup>
     <go>go</go>
-    <final>export-world (word contagion-dir "/" behavior-rand "_world.csv")
+    <final>set behavior-rand random 10000
+export-world (word contagion-dir "/" behavior-rand "_world.csv")
 export-plot "percent-agent-beliefs" (word contagion-dir "/" behavior-rand "_percent-agent-beliefs.csv")
 export-plot "homophily" (word contagion-dir "/" behavior-rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")</final>
-    <timeLimit steps="50"/>
+export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")
+export-plot "fragmentation" (word contagion-dir "/" behavior-rand "_fragmentation.csv")
+output-message-data contagion-dir behavior-rand</final>
+    <timeLimit steps="100"/>
     <metric>count citizens</metric>
     <enumeratedValueSet variable="belief-resolution">
       <value value="7"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="tick-end">
-      <value value="50"/>
+      <value value="100"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-spread?">
       <value value="true"/>
@@ -3985,10 +4024,10 @@ export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.
       <value value="true"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="citizen-media-trust?">
-      <value value="true"/>
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="citizen-citizen-trust?">
-      <value value="true"/>
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="brain-type">
       <value value="&quot;discrete&quot;"/>
@@ -4066,11 +4105,14 @@ export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.
   </experiment>
   <experiment name="parameter_sweep_TINYTEST" repetitions="2" runMetricsEveryStep="false">
     <setup>setup-py
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-parameter-sweep-TEST")
-show (word "run dir" run-dir)
+let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-parameter-sweep-TINYTEST")
 let graphs-path (word run-dir "/graphs")
-let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" media-ecosystem-n "-" citizen-init-dist "-" epsilon "-" cit-memory-len "-" graph-type "-" ba-m "-" repetition ".csv")
-show (word "graph file" graph-file)
+carefully [
+  if not (py:runresult (word "os.path.isdir('" graphs-path "')")) [
+    py:run (word "create_nested_dirs('" graphs-path "')")
+  ]
+] [ ]
+let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" media-ecosystem-n "-" citizen-init-dist "-" epsilon "-" cit-memory-len "-" repetition ".csv")
 ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
   set load-graph? true
   set load-graph-path graph-file
@@ -4078,34 +4120,36 @@ ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
 ] [
   set load-graph? false
   set save-graph-path graph-file
-  py:run (word "create_nested_dirs('" graphs-path "')")
   setup
   save-graph
 ]
-set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" media-ecosystem-n "/" citizen-init-dist "/" epsilon "/" cit-memory-len "/" graph-type "/" ba-m "/" repetition)
-show (word "contagion dir" contagion-dir)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-set behavior-rand random 10000
-export-plot "cit-a-histogram" (word contagion-dir "/" behavior-rand "_cit-a-histogram.csv")
-export-plot "media-a-histogram" (word contagion-dir "/" behavior-rand "_media-a-histogram.csv")</setup>
+set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" media-ecosystem-n "/" citizen-init-dist "/" epsilon "/" cit-memory-len "/" repetition)
+carefully [
+  if not (py:runresult (word "os.path.isdir('" contagion-dir "')")) [
+    py:run (word "create_nested_dirs('" contagion-dir "')")
+  ]
+] [ ]</setup>
     <go>go</go>
-    <final>export-world (word contagion-dir "/" behavior-rand "_world.csv")
+    <final>set behavior-rand random 10000
+export-world (word contagion-dir "/" behavior-rand "_world.csv")
 export-plot "percent-agent-beliefs" (word contagion-dir "/" behavior-rand "_percent-agent-beliefs.csv")
 export-plot "homophily" (word contagion-dir "/" behavior-rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")</final>
-    <timeLimit steps="250"/>
+export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")
+export-plot "fragmentation" (word contagion-dir "/" behavior-rand "_fragmentation.csv")
+output-message-data contagion-dir behavior-rand</final>
+    <timeLimit steps="100"/>
     <metric>count citizens</metric>
     <enumeratedValueSet variable="belief-resolution">
       <value value="7"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="tick-end">
-      <value value="250"/>
+      <value value="100"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-spread?">
       <value value="true"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-trust-conn?">
-      <value value="true"/>
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="citizen-media-trust?">
       <value value="false"/>
@@ -4190,9 +4234,14 @@ export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.
   </experiment>
   <experiment name="parameter_sweep_low_res" repetitions="5" runMetricsEveryStep="false">
     <setup>setup-py
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-parameter-sweep-TEST")
+let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-parameter-sweep-low-res")
 let graphs-path (word run-dir "/graphs")
-let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" media-ecosystem-n "-" citizen-init-dist "-" zeta-media "-" zeta-cit "-" cit-memory-len "-" graph-type "-" ba-m "-" repetition ".csv")
+carefully [
+  if not (py:runresult (word "os.path.isdir('" graphs-path "')")) [
+    py:run (word "create_nested_dirs('" graphs-path "')")
+  ]
+] [ ]
+let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" media-ecosystem-n "-" citizen-init-dist "-" zeta-cit "-" zeta-media "-" cit-memory-len "-" repetition ".csv")
 ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
   set load-graph? true
   set load-graph-path graph-file
@@ -4200,27 +4249,30 @@ ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
 ] [
   set load-graph? false
   set save-graph-path graph-file
-  py:run (word "create_nested_dirs('" graphs-path "')")
   setup
   save-graph
 ]
-set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" media-ecosystem-n "/" citizen-init-dist "/" zeta-media "/" zeta-cit "/" cit-memory-len "/" graph-type "/" ba-m "/" repetition)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-set behavior-rand random 10000
-export-plot "cit-a-histogram" (word contagion-dir "/" behavior-rand "_cit-a-histogram.csv")
-export-plot "media-a-histogram" (word contagion-dir "/" behavior-rand "_media-a-histogram.csv")</setup>
+set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" media-ecosystem-n "/" citizen-init-dist "/" zeta-cit "/" zeta-media "/" cit-memory-len "/" repetition)
+carefully [
+  if not (py:runresult (word "os.path.isdir('" contagion-dir "')")) [
+    py:run (word "create_nested_dirs('" contagion-dir "')")
+  ]
+] [ ]</setup>
     <go>go</go>
-    <final>export-world (word contagion-dir "/" behavior-rand "_world.csv")
+    <final>set behavior-rand random 10000
+export-world (word contagion-dir "/" behavior-rand "_world.csv")
 export-plot "percent-agent-beliefs" (word contagion-dir "/" behavior-rand "_percent-agent-beliefs.csv")
 export-plot "homophily" (word contagion-dir "/" behavior-rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")</final>
-    <timeLimit steps="250"/>
+export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")
+export-plot "fragmentation" (word contagion-dir "/" behavior-rand "_fragmentation.csv")
+output-message-data contagion-dir behavior-rand</final>
+    <timeLimit steps="200"/>
     <metric>count citizens</metric>
     <enumeratedValueSet variable="belief-resolution">
       <value value="7"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="tick-end">
-      <value value="250"/>
+      <value value="200"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-spread?">
       <value value="true"/>
@@ -4238,10 +4290,10 @@ export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.
       <value value="&quot;discrete&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="N">
-      <value value="200"/>
+      <value value="50"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="media-ecosystem-n">
-      <value value="20"/>
+      <value value="15"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="graph-type">
       <value value="&quot;barabasi-albert&quot;"/>

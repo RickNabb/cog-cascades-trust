@@ -7,18 +7,32 @@ Author: Nick Rabb (nick.rabb2@gmail.com)
 
 import networkx as nx
 import numpy as np
-import mag
 import math
 from networkx import community
 from messaging import dist_to_agent_brain, agent_trust_in_other_belief_func
 from random import random
-from kronecker import kronecker_pow
 from functools import reduce
-import matplotlib.cm as cm
-import matplotlib.pyplot as plt
 from enums import INSTITUTION_ECOSYSTEM_TYPES, eco_file_names
-from data import HomophilicThetaRow, normal_dist_multiple
-from utils import curr_sigmoid_p, sigmoid_contagion_p
+from utils import curr_sigmoid_p, sigmoid_contagion_p, normal_dist_multiple
+
+"""
+RELEVANT EMPIRICAL DATA
+"""
+
+# Attribute A distribution values
+HomophilicThetaRow = lambda row, l, p, s, d: [ 1/(1 + d + s * abs(pow(row - i, p))) for i in range(0, l) ]
+SquareHomophilicThetaRow = lambda row, l: HomophilicThetaRow(row, l, 2, 5, 0.25)
+LinearHomophilicThetaRow = lambda row, l: HomophilicThetaRow(row, l, 1, 5, 0.25)
+
+HeterophilicThetaRow = lambda row, l, p, s, d: [ (abs(pow(i-row,p)))/(s*pow(max(abs(l-row-1), row)+d,p)) for i in range(0, l) ]
+SquareHeterophilicThetaRow = lambda row, l: HeterophilicThetaRow(row, l, 2, 2, 0)
+LinearHeterophilicThetaRow = lambda row, l: HeterophilicThetaRow(row, l, 1, 2, 0)
+
+# AVals = np.ones(NUM_BELIEF_BUCKETS) #[1, 1, 1, 1, 1, 1, 1]
+# ADist = create_discrete_dist_sm(AVals)
+AMAGDefaultTheta = lambda resolution: np.ones((resolution,resolution)) * 0.05
+AMAGHomophilicTheta = lambda resolution: np.matrix([ HomophilicThetaRow(i, resolution, 2, 50, 5) for i in range(0, resolution) ])
+AMAGHeterophilicTheta = lambda resolution: np.matrix([ HeterophilicThetaRow(i, resolution, 2, 5, 1) for i in range(0, resolution) ])
 
 '''
 Return a NetLogo-safe Erdos-Renyi graph from the NetworkX package.
@@ -122,24 +136,24 @@ if there is no specified connection affinity matrix.
 to properly calculate the product of all attribute affinities for the matrix.
 :param style: A string denoting how to connect the attributes - default, homophilic, or heterophilic.
 '''
-def MAG_graph_bidirected(n, attrs, style, resolution):
-  (p_edge, L) = mag.attr_mag(n, attrs, style, resolution)
-  # print(p_edge)
-  # print(L)
-  G = nx.Graph()
-  G.add_nodes_from(range(0, len(p_edge[0])))
-  for i in range(0,len(p_edge)):
-    for j in range(0,len(p_edge)):
-      rand = random()
-      if (rand <= p_edge[(i,j)]):
-        # if (abs(L[i][0]-L[j][0]) >= 2):
-          # print(f'Chance to connect {L[i]} and {L[j]}: {p_edge[(i,j)]}')
-          # print(f'Rolled {rand}: {rand <= p_edge[(i,j)]}')
-        G.add_edge(i, j)
-  # print(f'Num edges: {len(G.edges)}')
-  nlogo_G = nlogo_safe_nodes_edges(bidirected_graph(G))
-  nlogo_G.update({'L': L})
-  return nlogo_G
+# def MAG_graph_bidirected(n, attrs, style, resolution):
+#   (p_edge, L) = mag.attr_mag(n, attrs, style, resolution)
+#   # print(p_edge)
+#   # print(L)
+#   G = nx.Graph()
+#   G.add_nodes_from(range(0, len(p_edge[0])))
+#   for i in range(0,len(p_edge)):
+#     for j in range(0,len(p_edge)):
+#       rand = random()
+#       if (rand <= p_edge[(i,j)]):
+#         # if (abs(L[i][0]-L[j][0]) >= 2):
+#           # print(f'Chance to connect {L[i]} and {L[j]}: {p_edge[(i,j)]}')
+#           # print(f'Rolled {rand}: {rand <= p_edge[(i,j)]}')
+#         G.add_edge(i, j)
+#   # print(f'Num edges: {len(G.edges)}')
+#   nlogo_G = nlogo_safe_nodes_edges(bidirected_graph(G))
+#   nlogo_G.update({'L': L})
+#   return nlogo_G
 
 '''
 Create a MAG graph for N nodes, given L attributes, and a style of connection
@@ -150,69 +164,69 @@ if there is no specified connection affinity matrix.
 to properly calculate the product of all attribute affinities for the matrix.
 :param style: A string denoting how to connect the attributes - default, homophilic, or heterophilic.
 '''
-def MAG_graph(n, attrs, style, resolution):
-  (p_edge, L) = mag.attr_mag(n, attrs, style, resolution)
-  # print(p_edge)
-  # print(L)
-  G = nx.Graph()
-  G.add_nodes_from(range(0, len(p_edge[0])))
-  for i in range(0,len(p_edge)):
-    for j in range(0,len(p_edge)):
-      rand = random()
-      if (rand <= p_edge[(i,j)]):
-        # if (abs(L[i][0]-L[j][0]) >= 2):
-          # print(f'Chance to connect {L[i]} and {L[j]}: {p_edge[(i,j)]}')
-          # print(f'Rolled {rand}: {rand <= p_edge[(i,j)]}')
-        G.add_edge(i, j)
-  # print(f'Num edges: {len(G.edges)}')
-  nlogo_G = nlogo_safe_nodes_edges(G)
-  nlogo_G.update({'L': L})
-  return nlogo_G
+# def MAG_graph(n, attrs, style, resolution):
+#   (p_edge, L) = mag.attr_mag(n, attrs, style, resolution)
+#   # print(p_edge)
+#   # print(L)
+#   G = nx.Graph()
+#   G.add_nodes_from(range(0, len(p_edge[0])))
+#   for i in range(0,len(p_edge)):
+#     for j in range(0,len(p_edge)):
+#       rand = random()
+#       if (rand <= p_edge[(i,j)]):
+#         # if (abs(L[i][0]-L[j][0]) >= 2):
+#           # print(f'Chance to connect {L[i]} and {L[j]}: {p_edge[(i,j)]}')
+#           # print(f'Rolled {rand}: {rand <= p_edge[(i,j)]}')
+#         G.add_edge(i, j)
+#   # print(f'Num edges: {len(G.edges)}')
+#   nlogo_G = nlogo_safe_nodes_edges(G)
+#   nlogo_G.update({'L': L})
+#   return nlogo_G
 
-def kronecker_graph(seed, k):
-  '''
-  Make a kronecker graph from a given seed to a power.
+# def kronecker_graph(seed, k):
+#   '''
+#   Make a kronecker graph from a given seed to a power.
 
-  :param seed: An np array to Kronecker power.
-  :param k: An integer to raise the graph to the Kronecker power of.
-  '''
-  G_array = kronecker_pow(seed, k)
-  G = nx.Graph()
-  G.add_nodes_from(range(0, G_array.shape[0]))
-  for i in range(G_array.shape[0]):
-    row = G_array[i]
-    for j in range(G_array.shape[1]):
-      if i == j:
-        continue
-      p = row[j]
-      if random() < p:
-        G.add_edge(i,j)
-  largest_connected_component = max(nx.connected_components(G), key=len)
-  G.remove_nodes_from(G.nodes - largest_connected_component)
-  # return G
-  return nlogo_safe_nodes_edges(G)
+#   :param seed: An np array to Kronecker power.
+#   :param k: An integer to raise the graph to the Kronecker power of.
+#   '''
+#   G_array = kronecker_pow(seed, k)
+#   G = nx.Graph()
+#   G.add_nodes_from(range(0, G_array.shape[0]))
+#   for i in range(G_array.shape[0]):
+#     row = G_array[i]
+#     for j in range(G_array.shape[1]):
+#       if i == j:
+#         continue
+#       p = row[j]
+#       if random() < p:
+#         G.add_edge(i,j)
+#   largest_connected_component = max(nx.connected_components(G), key=len)
+#   G.remove_nodes_from(G.nodes - largest_connected_component)
+#   # return G
+#   return nlogo_safe_nodes_edges(G)
 
-def kronecker_graph_bidirected(seed, k):
-  '''
-  Make a kronecker graph from a given seed to a power.
+# def kronecker_graph_bidirected(seed, k):
+#   '''
+#   Make a kronecker graph from a given seed to a power.
 
-  :param seed: An np array to Kronecker power.
-  :param k: An integer to raise the graph to the Kronecker power of.
-  '''
-  G_array = kronecker_pow(seed, k)
-  G = nx.Graph()
-  G.add_nodes_from(range(0, G_array.shape[0]))
-  for i in range(G_array.shape[0]):
-    row = G_array[i]
-    for j in range(G_array.shape[1]):
-      if i == j:
-        continue
-      p = row[j]
-      if random() < p:
-        G.add_edge(i,j)
-  largest_connected_component = max(nx.connected_components(G), key=len)
-  G.remove_nodes_from(G.nodes - largest_connected_component)
-  return nlogo_safe_nodes_edges(bidirected_graph(G))
+#   :param seed: An np array to Kronecker power.
+#   :param k: An integer to raise the graph to the Kronecker power of.
+#   '''
+#   G_array = kronecker_pow(seed, k)
+#   G = nx.Graph()
+#   G.add_nodes_from(range(0, G_array.shape[0]))
+#   for i in range(G_array.shape[0]):
+#     row = G_array[i]
+#     for j in range(G_array.shape[1]):
+#       if i == j:
+#         continue
+#       p = row[j]
+#       if random() < p:
+#         G.add_edge(i,j)
+#   largest_connected_component = max(nx.connected_components(G), key=len)
+#   G.remove_nodes_from(G.nodes - largest_connected_component)
+#   return nlogo_safe_nodes_edges(bidirected_graph(G))
 
 def bidirected_graph(G):
   '''
@@ -455,17 +469,17 @@ def first_degree_power_distribution(G, bel_fn):
   '''
   return [ { u: first_degree_power(G, u, bel_fn) } for u in G.nodes ]
 
-def plot_graph_communities(G, level):
-  '''
+# def plot_graph_communities(G, level):
+#   '''
 
-  '''
-  dendrogram = community.generate_dendrogram(G)
-  partition = community.partition_at_level(dendrogram, level)
-  pos = nx.spring_layout(G)
-  cmap = cm.get_cmap('viridis', max(partition.values()) + 1)
-  nx.draw_networkx_nodes(G, pos, partition.keys(), node_size=40, cmap=cmap, node_color=list(partition.values()))
-  nx.draw_networkx_edges(G, pos, alpha=0.5)
-  plt.show()
+#   '''
+#   dendrogram = community.generate_dendrogram(G)
+#   partition = community.partition_at_level(dendrogram, level)
+#   pos = nx.spring_layout(G)
+#   cmap = cm.get_cmap('viridis', max(partition.values()) + 1)
+#   nx.draw_networkx_nodes(G, pos, partition.keys(), node_size=40, cmap=cmap, node_color=list(partition.values()))
+#   nx.draw_networkx_edges(G, pos, alpha=0.5)
+#   plt.show()
 
 def node_homophily(G, node):
   '''
@@ -490,13 +504,17 @@ def graph_homophily(G):
   '''
   distances = []
   attrs = np.array([ list(G.nodes[node].values()) for node in G.nodes ])
-  adj = nx.adjacency_matrix(G)
+  adj = []
+  for i in G.nodes:
+    adj.append([ (i,j) in G.edges for j in G.nodes ])
+  adj = np.matrix(adj).astype(int)
+  # adj = nx.adjacency_matrix(G)
   for node in G.nodes:
     norm_vector = np.array([ np.linalg.norm(attr - attrs[node]) for attr in attrs ])
     # Note: adj[node] * norm_vector sums the values already
     # Note 2: The max(sum(), 1) is to protect against division by 0
     # in the case of disconnected nodes
-    distances.append((adj[node] * norm_vector)[0] / max(adj[node].sum(),1))
+    distances.append((adj[node] * np.matrix(norm_vector).transpose())[0] / max(adj[node].sum(),1))
 
   return (np.array(distances).mean(), np.array(distances).var())
 

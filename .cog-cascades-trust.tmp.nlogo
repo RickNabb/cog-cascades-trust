@@ -27,8 +27,10 @@ globals [
   mag-g
   cur-message-id
   messages-over-time
+  beliefs-over-time
   citizen-priors
   citizen-malleables
+  topics
 
   ;; For experiments
   contagion-dir
@@ -40,6 +42,8 @@ citizens-own [
   brain
   messages-heard
   messages-believed
+  ;; Trust
+  agent-messages-memory
 ]
 
 medias-own [
@@ -93,7 +97,11 @@ to setup
 
   ;; Set the priors and malleables for each citizen
   set citizen-priors []
-  set citizen-malleables [ "Attributes.A" ]
+  set citizen-malleables [ "A" ]
+
+  set topics [ ["Q1" ["A"]] ]
+
+  set beliefs-over-time []
 
   ask patches [
     set pcolor white
@@ -102,9 +110,23 @@ to setup
   ifelse not load-graph? [
     create-agents
     connect-agents
-    connect-media
+    if citizen-citizen-trust? [
+      initialize-citizen-citizen-memory
+    ]
+    ifelse citizen-media-trust? [
+      connect-media-initial-zeta
+      initialize-citizen-media-memory
+    ] [
+      connect-media-epsilon
+    ]
   ] [
     read-graph
+    if citizen-citizen-trust? [
+      initialize-citizen-citizen-memory
+    ]
+    if citizen-media-trust? [
+      initialize-citizen-media-memory
+    ]
   ]
 
   ;; Load message data sets to be used by influencer agents
@@ -140,11 +162,13 @@ to setup-py
   py:setup "python"
   py:run "import sys"
   py:run "import os"
-  py:run "import kronecker as kron"
-  py:run "from data import *"
+;  py:run "import kronecker as kron"
+;  py:run "import data_analysis"
+  py:run "from utils import *"
   py:run "from messaging import *"
-  py:run "import mag as MAG"
+;  py:run "import mag as MAG"
   py:run "from nlogo_graphs import *"
+  py:run "from nlogo_io import *"
 end
 
 to create-agents
@@ -171,10 +195,45 @@ to create-citizenz
     set brain create-agent-brain id citizen-priors citizen-malleables (item id prior-vals) (item id malleable-vals)
     set messages-heard []
     set messages-believed []
+    set agent-messages-memory []
 
     set size 0.5
     setxy random-xcor random-ycor
     set id id + 1
+  ]
+end
+
+to initialize-citizen-citizen-memory
+  let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
+  ask citizens [
+    foreach (sort social-friend-neighbors) [ neighbor ->
+      add-agent-memory self neighbor
+      initialize-memory-from-init-belief self neighbor
+    ]
+  ]
+end
+
+to initialize-citizen-media-memory
+  let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
+  ask citizens [
+    foreach (sort subscriber-neighbors) [ neighbor ->
+      add-agent-memory self neighbor
+      initialize-memory-from-init-belief self neighbor
+    ]
+  ]
+end
+
+to initialize-memory-from-init-belief [ cit oth ]
+  let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
+  ask cit [
+    repeat cit-memory-len [
+      ; TODO: Should this just be a message encoding all belief values rather than all belief
+      ; values worth of single messages?
+      foreach all-beliefs [ bel ->
+        let message (list (list bel (dict-value ([brain] of oth) bel)))
+        add-message-to-memory self oth message
+      ]
+    ]
   ]
 end
 
@@ -316,15 +375,67 @@ to connect-agents
   ask citizens with [ empty? sort social-friend-neighbors ] [ show "removed isolate" ]
 end
 
-to connect-media
-  let u 0
+to connect-media-epsilon
   ask medias [
     let m self
     ask citizens [
-      if dist-between-agent-brains brain ([brain] of m) <= epsilon [
+      let dist dist-between-agent-brains brain ([brain] of m)
+      if dist <= epsilon [
         create-subscriber-from m [ set weight media-citizen-influence ]
-        ;      create-subscriber-to m [ set weight citizen-media-influence ]
       ]
+    ]
+  ]
+end
+
+to connect-media-initial-zeta
+  let zeta-conns cit-media-initial-connections-by-zeta
+  let j (length sort citizens)
+  foreach zeta-conns [ sub-list ->
+    let m (media j)
+    let i 0
+    foreach sub-list [ sub ->
+      let c citizen i
+      if sub = 1 [ ask m [ create-subscriber-to c ] ]
+      set i i + 1
+    ]
+    set j j + 1
+  ]
+end
+
+to connect-media-zeta
+  let zeta-conns cit-media-connections-by-zeta
+
+  ask medias [ ask subscribers [ die ] ]
+
+  let i 0
+  foreach zeta-conns [ sub-list ->
+    let cit (citizen i)
+    let j (length sort citizens)
+    foreach sub-list [ sub ->
+      let m (media j)
+      if sub = 1 [ ask cit [ create-subscriber-from m ] ]
+      set j j + 1
+    ]
+    set i i + 1
+  ]
+end
+
+to connect-all-media
+  ask medias [
+    let m self
+    ask citizens [
+      create-subscriber-from m
+    ]
+  ]
+end
+
+to prune-media-connections
+  let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
+  let message-with-all-topics (map [ bel -> (list bel 1) ] all-beliefs)
+  ask medias [
+    let m self
+    ask citizens [
+      update-trust-connection self m message-with-all-topics
     ]
   ]
 end
@@ -452,8 +563,14 @@ to go
 end
 
 to step
+  set beliefs-over-time (lput (list ticks (map [ cit -> agent-brain-beliefs-as-dict cit ] (sort citizens))) beliefs-over-time)
   if media-agents? [
+;    show "Sending messages from institutions"
     institutions-send-messages
+    if citizen-media-trust? and matrix-trust-conn? [
+;      show "Reconnecting by zeta"
+      connect-media-zeta
+    ]
   ]
   if contagion-on? [
     ;; In the case where we do not have influencer agents, simply do a contagion from the agent perspective
@@ -461,7 +578,8 @@ to step
       let c self
       ask out-link-neighbors [
        ; show (word "Citizen " self " receiving message " (agent-brain-malleable-values c) " from citizen " c)
-        receive-message self c (agent-brain-malleable-values c) 0
+;        receive-message -1 self c (agent-brain-malleable-values c) 0
+        spread-message -1 self c (agent-brain-malleable-values c) 0
       ]
     ]
   ]
@@ -487,9 +605,6 @@ to institutions-send-messages
   ]
   if institution-tactic = "appeal-mode" [
     institutions-appeal-mode
-  ]
-  if institution-tactic = "max-reach-no-chain" [
-    institutions-max-reach-no-chain
   ]
 end
 
@@ -554,88 +669,6 @@ to institutions-appeal-mode
   ]
 end
 
-to institutions-max-reach-no-chain
-  ask medias [
-    ifelse empty? messages-sent [
-      let message-val dict-value brain "A"
-      repeat message-repeats [
-        send-media-message-to-subscribers self (list (list "A" message-val))
-      ]
-    ] [
-      ;; This gets a list of messages b/c messages-sent = [ [message-id [ message ]] [message-id [ message ] ]] ... ]
-      let last-message-obj (last messages-sent)
-      let last-message-id item 0 last-message-obj
-      let last-message item 1 last-message-obj
-
-      show self
-      show last-message
-      let believed-cits citizens with [
-        (dict-value messages-believed (ticks - 1)) != -1 and
-        member? last-message-id (dict-value messages-believed (ticks - 1))
-      ]
-      show believed-cits
-      let heard-not-bel-cits citizens with [
-        (dict-value messages-heard (ticks - 1)) != -1 and member? last-message-id (dict-value messages-heard (ticks - 1)) and
-        (dict-value messages-believed (ticks - 1)) != -1 and not member? last-message-id (dict-value messages-believed (ticks - 1))
-      ]
-      show heard-not-bel-cits
-
-      if empty? sort believed-cits and empty? sort heard-not-bel-cits [
-        let message-val dict-value brain "A"
-        repeat message-repeats [
-          send-media-message-to-subscribers self (list (list "A" message-val))
-        ]
-      ]
-      ifelse empty? sort heard-not-bel-cits [
-        repeat message-repeats [
-          send-media-message-to-subscribers self last-message
-        ]
-      ] [
-        if spread-type = "simple" [
-          ; Doesn't seem to be much you can do here... it's all random
-        ]
-        if spread-type = "complex" [
-
-        ]
-        if spread-type = "cognitive" [
-          ;; TODO: Come up with some other procedure for this... in multi-dimensional belief space this would be too much
-          let bel-min (item 1 last-message)
-          let bel-max (item 1 last-message)
-          if not empty? sort believed-cits [
-            set bel-min (min [dict-value brain "A"] of believed-cits)
-            set bel-max (max [dict-value brain "A"] of believed-cits)
-          ]
-          let heard-min (item 1 last-message)
-          let heard-max (item 1 last-message)
-          if not empty? sort heard-not-bel-cits [
-            set heard-min (min [dict-value brain "A"] of heard-not-bel-cits)
-            set heard-max (max [dict-value brain "A"] of heard-not-bel-cits)
-          ]
-          let potential-messages (range (min (list bel-min heard-min)) (max (list bel-max heard-max) + 1))
-          show potential-messages
-
-          ; Test all message value expected # of agents believing it
-          let best-message-val -1
-          let best-expected-bels -1
-          foreach potential-messages [ message-val ->
-            let believed-ps map [ cit -> cognitive-contagion-p cit last-message ] (sort believed-cits)
-            let expected-beliefs sum believed-ps
-            if expected-beliefs > best-expected-bels [
-              set best-expected-bels expected-beliefs
-              set best-message-val message-val
-            ]
-          ]
-
-          show best-message-val
-          repeat message-repeats [
-            send-media-message-to-subscribers self (list (list "A" best-message-val))
-          ]
-        ]
-      ]
-    ]
-  ]
-end
-
 to update-agents
   ask citizens [
     update-citizen
@@ -663,9 +696,57 @@ to send-media-message-to-subscribers [ m message ]
   ask m [
     let mid cur-message-id
     set messages-sent (lput (list mid message) messages-sent)
-    ask my-subscribers [
-      ask other-end [
-        receive-message self m message mid
+
+    ifelse matrix-spread? [
+      let spread-res spread-from-media m message 0.01
+;      show "Got spread-res"
+      let heard (dict-value spread-res "heard")
+      let believed (dict-value spread-res "believed")
+      let heard-from (dict-value spread-res "heard_from")
+
+      let i 0
+;      show "Starting update"
+      repeat length heard [
+        let cit (citizen i)
+        if (item i heard) = 1 [
+          hear-message cit mid message
+          if citizen-media-trust? [
+            add-agent-memory cit m
+            add-message-to-memory cit m message
+            if not matrix-trust-conn? [
+              update-trust-connection cit m message
+            ]
+          ]
+          foreach (dict-value heard-from (word i)) [ sender ->
+            let cit-sender (citizen sender)
+            if citizen-citizen-trust? [
+              add-agent-memory cit cit-sender
+              add-message-to-memory cit cit-sender message
+              if not matrix-trust-conn? [
+                update-trust-connection cit cit-sender message
+              ]
+            ]
+          ]
+        ]
+        if (item i believed) = 1 [ believe-message cit mid message ]
+
+        ask cit [ update-citizen ]
+
+        set i i + 1
+      ]
+;      show "Finished update"
+    ] [
+      ask my-subscribers [
+        ask other-end [
+;          if not (heard-message? self ticks mid) [
+;            hear-message self mid message
+;            if (believe-message? self message) [
+;              believe-message self mid message
+;              spread-message m self m message mid
+;            ]
+;          ]
+          receive-message m self m message mid
+        ]
       ]
     ]
     set cur-message-id (cur-message-id + 1)
@@ -699,17 +780,91 @@ to-report cognitive-contagion-p [ cit message ]
   report p
 end
 
+to-report believe-message? [ cit message ]
+  if spread-type = "cognitive" [
+    let p cognitive-contagion-p self message
+    ;; Whether or not to believe the message
+    let roll random-float 1
+    if roll <= p [
+      report true
+    ]
+  ]
+  if spread-type = "simple" [
+    let roll random-float 1
+    if roll <= simple-spread-chance [
+      report true
+    ]
+  ]
+  if spread-type = "complex" [
+    let believing-neighbors 0
+    ask social-friend-neighbors [
+      let believes true
+      foreach message [ m ->
+        let attr (item 0 m)
+        let val (item 1 m)
+        set believes (believes and (dict-value brain attr = val))
+      ]
+      if believes [
+        set believing-neighbors believing-neighbors + 1
+      ]
+    ]
+    if (believing-neighbors / length sort social-friend-neighbors) >= complex-spread-ratio [
+      report true
+    ]
+  ]
+  report false
+end
+
+to spread-message [ source cit sender message message-id ]
+  ; Add message to memory for trust
+  if citizen-media-trust? [
+    add-agent-memory self source
+    add-message-to-memory self source message
+  ]
+  if citizen-citizen-trust? [
+    add-agent-memory self sender
+    add-message-to-memory self sender message
+  ]
+  let next-believers one-spread-iteration cit message
+  foreach next-believers [ cit-id ->
+    let next-cit (citizen cit-id)
+    if not (heard-message? next-cit ticks message-id) [
+      hear-message next-cit message-id message
+      believe-message next-cit message-id message
+      ask next-cit [ update-citizen ]
+
+    ; Update connections
+;      if not matrix-trust-conn? [
+;      if citizen-media-trust? [ update-trust-connection self source message ]
+;      if citizen-citizen-trust? [ update-trust-connection self sender message ]
+;      ]
+      spread-message source next-cit cit message message-id
+    ]
+  ]
+end
+
 ;; Have a citizen agent receive a message: hear it, either believe it or not, and subsequently either
 ;; share it or not.
 ;;
+;; @param source - The original institutional agent who sent the message
 ;; @param cit - The citizen agent who is receiving the message.
 ;; @param sender - The originator of the message (CURRENTLY NOT USED -- SHOULD BE REMOVED)
 ;; @param message - The message itself.
 ;; @param message-id - The unique ID of the message (used so the citizen agent does not duplicate shares)
-to receive-message [ cit sender message message-id ]
+to receive-message [ source cit sender message message-id ]
   ask cit [
     if not (heard-message? self ticks message-id) [
       hear-message self message-id message
+;      show (word "message " message-id " heard from source " source " from sender " sender)
+
+      if citizen-media-trust? [
+        add-agent-memory self source
+        add-message-to-memory self source message
+      ]
+      if citizen-citizen-trust? [
+        add-agent-memory self sender
+        add-message-to-memory self sender message
+      ]
 
       if spread-type = "cognitive" [
 
@@ -722,10 +877,14 @@ to receive-message [ cit sender message message-id ]
           believe-message self message-id message
 
           ask social-friend-neighbors [
-            receive-message self cit message message-id
+            receive-message source self cit message message-id
           ]
         ]
         update-citizen
+        if not matrix-trust-conn? [
+          if citizen-media-trust? [ update-trust-connection self source message ]
+          if citizen-citizen-trust? [ update-trust-connection self sender message ]
+        ]
       ]
 
       if spread-type = "simple" [
@@ -736,7 +895,7 @@ to receive-message [ cit sender message message-id ]
           set brain (believe-message-py brain message)
           believe-message self message-id message
           ask social-friend-neighbors [
-            receive-message self cit message message-id
+            receive-message source self cit message message-id
           ]
         ]
       ]
@@ -761,10 +920,33 @@ to receive-message [ cit sender message message-id ]
           believe-message self message-id message
           ;; Unsure if this sharing behavior is correct...
           ask social-friend-neighbors [
-            receive-message self cit message message-id
+            receive-message source self cit message message-id
           ]
         ]
       ]
+    ]
+  ]
+end
+
+;; Have a citizen commit a media message to memory
+;;
+;; @param cit - The citizen
+;; @param source - The original media source of the message
+;; @param message - The content of the message
+to add-message-to-memory [ cit source message ]
+  ask cit [
+    let memory-by-belief dict-value agent-messages-memory source
+    foreach message [ bel-val ->
+      let belief-key (item 0 bel-val)
+      let belief dict-value message belief-key
+      let memory dict-value memory-by-belief belief-key
+
+      set memory (lput belief memory)
+      if length memory > cit-memory-len [
+        set memory but-first memory
+      ]
+      set memory-by-belief (replace-dict-item memory-by-belief belief-key memory)
+      set agent-messages-memory (replace-dict-item agent-messages-memory source memory-by-belief)
     ]
   ]
 end
@@ -777,6 +959,14 @@ end
 ;; @param message - The message itself.
 to believe-message [ cit message-id message ]
   ask cit [
+;    st brain (believe-message-py brain message)
+    foreach message [ entry ->
+      let bel-key item 0 entry
+      let bel-val item 1 entry
+      ask cit [
+        set brain (replace-dict-item brain bel-key bel-val)
+      ]
+    ]
     let i (index-of-dict-entry messages-believed ticks)
     ifelse i != -1 [
       let messages-at-tick (item i messages-believed)
@@ -829,6 +1019,60 @@ to hear-message [ cit message-id message ]
   ]
 end
 
+;; Connect or disconnect from another agent based off of
+;; trust in that citizen and the global threshold set by zeta;
+;; trust conditioned by topics that the message touched on.
+;;
+;; @param cit - The citizen to update links.
+;; @param oth - The other agent (citizen or media) to check trust against (the one who
+;; just sent a message to the citizen).
+;; @param message - The message a citizen just received.
+to update-trust-connection [ cit oth message ]
+  let message-topics topics-in-message message
+
+  ;; TODO: This is an assumption that connections do not differ based on topic,
+  ;; but rather that distrust in one topic may make or break a connection even
+  ;; given trust in another topic
+  let trust-by-topic map [ topic -> citizen-trust-in-other cit oth topic ] message-topics
+  let trust mean trust-by-topic
+;  show trust-by-topic
+  ask cit [
+    if is-media? oth [
+      if trust < zeta-media and in-link-neighbor? oth [
+        ask in-subscriber-from oth [ die ]
+      ]
+      if trust >= zeta-media and not in-link-neighbor? oth [
+        create-subscriber-from oth
+      ]
+    ]
+    if is-citizen? oth [
+      if trust < zeta-cit and social-friend-neighbor? oth [
+        ask social-friend-with oth [ die ]
+      ]
+      if trust >= zeta-cit and not in-link-neighbor? oth [
+        create-social-friend-to oth
+        create-social-friend-from oth
+      ]
+    ]
+  ]
+end
+
+;; Add a memory slot for a given agent's messages for citizen cit
+;;
+;; @param cit - The citizen to add a memory slot to
+;; @param agente - The agent to add memory tracking for
+to add-agent-memory [ cit agente ]
+  ask cit [
+    let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
+    if is-list? agent-messages-memory [
+      let entry (dict-value agent-messages-memory agente)
+      if entry = -1 [
+        set agent-messages-memory (lput (list agente (map [ b -> list b [] ] all-beliefs)) agent-messages-memory)
+      ]
+    ]
+  ]
+end
+
 to test
   py:setup "python"
   py:run "from messaging import *"
@@ -869,6 +1113,7 @@ to read-graph
     set brain create-agent-brain id citizen-priors citizen-malleables [] (list a)
     set messages-heard []
     set messages-believed []
+    set agent-messages-memory []
 
     set size 0.5
     setxy random-xcor random-ycor
@@ -1049,7 +1294,7 @@ end
 
 to-report create-agent-brain [ id prior-attrs malleable-attrs prior-vals malleable-vals ]
   report py:runresult(
-    word "create_agent_brain(" id "," (list-as-py-array prior-attrs false) "," (list-as-py-array malleable-attrs false) "," (list-as-py-array prior-vals false) ", " (list-as-py-array malleable-vals false) ",'" brain-type "',1,1)"
+    word "create_agent_brain(" id "," (list-as-py-array prior-attrs true) "," (list-as-py-array malleable-attrs true) "," (list-as-py-array prior-vals false) ", " (list-as-py-array malleable-vals false) ",'" brain-type "',1,1)"
   )
 end
 
@@ -1077,6 +1322,99 @@ to-report receive-message-py [ agent-brain message ]
   )
 end
 
+;; Return citizen "cit" trust level in agent "oth" on topic "topic"
+;; calculated by trust-fn. This fetches the memory matrix from the
+;; citizen, conditioned by topic, of messages sent by agent oth,
+;; and then feeds them through the trust function to get a result.
+;;
+;; @param cit - The citizen to get trust for.
+;; @param oth - The other agent their trust is in.
+;; @param topic - The topic to fetch memory for (containing belief propositions).
+to-report citizen-trust-in-other [ cit oth topic ]
+  let topic-beliefs (dict-value topics topic)
+  let memory-by-belief [ dict-value agent-messages-memory oth ] of cit
+  let b [ brain ] of cit
+  let py-function ""
+  if citizen-trust-fn = "average-bel" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+  ]
+  let command (word "agent_trust_in_other_belief_func(" (list-as-py-dict-rec memory-by-belief true false) "," (agent-brain-as-py-dict b) "," (list-as-py-array topic-beliefs true) ", " py-function ")")
+
+  report py:runresult(
+    command
+  )
+end
+
+to-report cit-media-initial-connections-by-zeta
+  let cit-beliefs list-as-py-array (map [ cit -> list-as-py-dict-rec (agent-brain-beliefs-as-dict cit) true false ] (sort citizens)) false
+  let media-beliefs list-as-py-array (map [ med -> list-as-py-dict-rec (agent-brain-beliefs-as-dict med) true false ] (sort medias)) false
+  let py-function ""
+
+;  show cit-beliefs
+;  show media-beliefs
+
+  if citizen-trust-fn = "average-bel" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+  ]
+  let command (word "citizen_media_initial_connections_by_zeta(" cit-beliefs "," media-beliefs "," zeta-media "," cit-memory-len "," (list-as-py-dict-rec topics true true) "," py-function ")")
+
+  report py:runresult(
+    command
+  )
+end
+
+to-report cit-media-connections-by-zeta
+  let cit-beliefs list-as-py-array (map [ cit -> list-as-py-dict-rec (agent-brain-beliefs-as-dict cit) true false ] (sort citizens)) false
+  let cit-memories list-as-py-array (map [ cit -> list-as-py-dict-rec ([agent-messages-memory] of cit) true false ] (sort citizens)) false
+  let py-function ""
+
+;  show cit-beliefs
+;  show cit-memories
+
+  if citizen-trust-fn = "average-bel" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+  ]
+  let command (word "citizen_media_connections_by_zeta(" cit-beliefs "," cit-memories "," zeta-media "," cit-memory-len "," (length sort medias) "," (list-as-py-dict-rec topics true true) "," py-function ")")
+
+  report py:runresult(
+    command
+  )
+end
+
+;; Perform one iteration of spread from a given citizen with a given message.
+;; This returns an array of neighbors who would believe the message with the
+;; currently set spread-type function and parameters.
+;;
+;; @param cit - The citizen sharing a message
+;; @param message - The message
+to-report one-spread-iteration [ cit message ]
+  let citizen-arr list-as-py-array (map [ c -> agent-brain-as-py-dict [brain] of citizen c ] (range N)) false
+  let edge-arr list-as-py-array (sort social-friends) true
+  let py-function ""
+  if spread-type = "cognitive" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+  ]
+  let command (word "one_spread_iteration(nlogo_graph_to_nx(" citizen-arr "," edge-arr ")," ([dict-value brain "ID"] of cit) "," (list-as-py-dict message true false) "," py-function ")")
+  report py:runresult(
+    command
+  )
+end
+
+to-report spread-from-media [ med message limit ]
+  let citizen-arr list-as-py-array (map [ c -> agent-brain-as-py-dict [brain] of citizen c ] (range N)) false
+  let edge-arr list-as-py-array (sort social-friends) true
+  let nlogo-graph-py (word "nlogo_graph_to_nx(" citizen-arr "," edge-arr ")")
+  let cits map [ sub -> [ dict-value brain "ID" ] of sub ] (sort [ subscriber-neighbors ] of med)
+  let py-function ""
+  if spread-type = "cognitive" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+  ]
+  let command (word "spread_from(nlogo_graph_to_nx(" citizen-arr "," edge-arr ")," (list-as-py-array cits false) "," (list-as-py-dict message true false) "," py-function "," limit ")")
+  report py:runresult(
+    command
+  )
+end
+
 to-report believe-message-py [ agent-brain message ]
 ;  show(agent-brain-as-py-dict agent-brain)
   ;show(list-as-py-dict message false false)
@@ -1090,6 +1428,12 @@ end
 to-report message-dist [ m1 m2 ]
   report py:runresult(
     word "message_distance(" (list-as-py-array m1 false) "," (list-as-py-array m2 false) ")"
+  )
+end
+
+to-report topics-in-message [ message ]
+  report py:runresult(
+    word "topics_in_message(" (list-as-py-dict-rec topics true true) "," (list-as-py-dict message true false) ")"
   )
 end
 
@@ -1231,9 +1575,10 @@ end
 to-report graph-homophily
   let citizen-arr list-as-py-array (map [ cit -> agent-brain-as-py-dict [brain] of citizen cit ] (range N)) false
   let edge-arr list-as-py-array (sort social-friends) true
-  report py:runresult(
+  let homophily py:runresult(
     (word "graph_homophily(nlogo_graph_to_nx(" citizen-arr "," edge-arr "))")
   )
+  report homophily
 end
 
 ;; Report the amount of homophily for a single citizen by measuring the average neighbor
@@ -1244,6 +1589,19 @@ to-report citizen-homophily [ cit-id ]
   let edge-arr list-as-py-array (sort social-friends) true
   report py:runresult(
     (word "node_homophily(nlogo_graph_to_nx(" citizen-arr "," edge-arr ")," cit-id ")")
+  )
+end
+
+to-report graph-fragmentation
+  let cit-beliefs list-as-py-array (map [ cit -> list-as-py-dict-rec (agent-brain-beliefs-as-dict cit) true false ] (sort citizens)) false
+  let media-beliefs list-as-py-array (map [ med -> list-as-py-dict-rec (agent-brain-beliefs-as-dict med) true false ] (sort medias)) false
+  let subscriberz list-as-py-array (map [ med -> list-as-py-array ([ map [ s -> [ dict-value brain "ID"] of s ] sort subscriber-neighbors ] of med) false ] (sort medias)) false
+  let py-function ""
+
+  let command (word "graph_fragmentation(" cit-beliefs "," media-beliefs "," subscriberz ")")
+
+  report py:runresult(
+    command
   )
 end
 
@@ -1345,9 +1703,31 @@ to-report chi-sq [ dist1 dist2 ]
   report py:runresult((word "chi2_contingency(" (list-as-py-array dist false) ")"))
 end
 
+;; Write out the message-related data that the simulation has stored: agent beliefs at each time step,
+;; messages that agents heard, messages that agents believed, messages that institutions sent.
+to output-message-data [ path uniqueid ]
+  let bel-over-time-py list-as-py-array (map [ tick-entry -> (word "{" (item 0 tick-entry) ": " (list-as-py-array (map [ bels -> list-as-py-dict-rec bels true false ] (item 1 tick-entry)) false) "}") ] beliefs-over-time) false
+  let messages-heard-py list-as-py-array (map [ cit -> [ list-as-py-array (map [ tick-entry -> (word "{" (item 0 tick-entry) ": " (list-as-py-array (item 1 tick-entry) false) "}") ] messages-heard) false ] of cit ] (sort citizens)) false
+  let messages-believed-py list-as-py-array (map [ cit -> [ list-as-py-array (map [ tick-entry -> (word "{" (item 0 tick-entry) ": " (list-as-py-array (item 1 tick-entry) false) "}") ] messages-believed) false ] of cit ] (sort citizens)) false
+  let messages-sent-py list-as-py-array (map [ med -> [ list-as-py-dict-rec messages-sent true false ] of med ] (sort medias)) false
+  py:run (word "write_message_data('" path "'," "'" uniqueid "'," bel-over-time-py "," messages-heard-py "," messages-believed-py "," messages-sent-py ")")
+end
+
 ;;;;;;;;;;;;;;;
 ; HELPER PROCS
 ;;;;;;;;;;;;;;;
+
+;; Perform a set union of two lists
+;;
+;; @param lists - The lists to union
+to-report set-merge-lists [ lists ]
+  let merged []
+  foreach lists [ l ->
+    foreach l [ element -> set merged (lput element merged) ]
+  ]
+  set merged remove-duplicates merged
+  report merged
+end
 
 ;; Report the distribution (count) of beliefs for attribute attr over a given agent set.
 ;; @param agentset - The agentset to count over.
@@ -1413,6 +1793,24 @@ to-report agent-brain-beliefs-as-list [ agent ]
   report map [ bel -> item 1 bel ] bels
 end
 
+;; Get the beliefs of an agent as a list, not a dictionary including their name
+;; @param agent - The turtle to get beliefs for
+;; @reports A list of lists containing only the integer belief values for each belief in order
+to-report agent-brain-beliefs-as-dict [ agent ]
+  let b [brain] of agent
+  let priors (dict-value b "prior")
+  let malleables (dict-value b "malleable")
+  report filter [ bel -> member? (item 0 bel) priors or member? (item 0 bel) malleables ] [brain] of agent
+end
+
+to-report media-sent-messages-reduced [ med ]
+  report [map [ m -> (item 0 (item 1 m)) ] messages-sent] of med
+end
+
+to-report media-messages-for-bel [ med bel ]
+  report filter [ bel-val -> (item 0 bel-val) = bel ] media-sent-messages-reduced med
+end
+
 ;; Limits a value between a min and a max.
 ;; @param val - The value.
 ;; @param lower - The lower bound.
@@ -1437,11 +1835,20 @@ to-report date-time-safe
   report safedatetime
 end
 
+to-report last-n-of [ liste en ]
+  report sublist liste (max (list (length liste - en) 0)) (length liste)
+end
+
 ;;;;;;;;;;;;;;;;;;
 ;; PROCS TO HELP
 ;; WITH PYTHON CONVERSION
 ;;;;;;;;;;;;;;;;;;
 
+;; Replace an element in a NetLogo dictionary (list of lists) with a new value
+;;
+;; @param l - The list (dictionary) replace an item in
+;; @param key - The key of the entry to replace
+;; @param value - The new value to insert at entry @param key
 to-report replace-dict-item [ l key value ]
   let key-i 0
   let i 0
@@ -1451,7 +1858,7 @@ to-report replace-dict-item [ l key value ]
     ]
     set i i + 1
   ]
-  report (replace-item key-i l value)
+  report (replace-item key-i l (list key value))
 end
 
 to-report dict-value [ dict key ]
@@ -1558,6 +1965,7 @@ end
 
 ; [ [ 'key1' val ] [ 'key2' [ 'key3' val2 ] ] [ 'key4' [ val3 val4 val5 ] ] ]
 to-report list-as-py-dict-rec [ l key-quotes? val-quotes? ]
+  if length l = 0 [ report "{}" ]
   let py-dict "{ "
   let i 1
   foreach l [ el ->
@@ -1593,13 +2001,13 @@ to-report tuple-list-as-py-dict [ l key-quotes? val-quotes? ]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-1169
-13
-1557
-402
+1029
+14
+1336
+322
 -1
 -1
-11.52
+9.061
 1
 10
 1
@@ -1671,10 +2079,10 @@ NIL
 1
 
 PLOT
-1625
-73
-2023
-223
+1047
+474
+1445
+624
 cit-a-histogram
 A Value
 Number of Agents
@@ -1689,10 +2097,10 @@ PENS
 "default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\nset-plot-x-range -1 (belief-resolution + 1)\n\nhistogram [dict-value brain \"A\"] of citizens"
 
 MONITOR
-1623
-232
-1681
-277
+1045
+633
+1103
+678
 0
 count citizens with [dict-value brain \"A\" = 0]
 1
@@ -1700,10 +2108,10 @@ count citizens with [dict-value brain \"A\" = 0]
 11
 
 MONITOR
-1680
-232
-1737
-277
+1102
+633
+1159
+678
 1
 count citizens with [dict-value brain \"A\" = 1]
 1
@@ -1711,10 +2119,10 @@ count citizens with [dict-value brain \"A\" = 1]
 11
 
 MONITOR
-1743
-232
-1809
-277
+1165
+633
+1231
+678
 2
 count citizens with [dict-value brain \"A\" = 2]
 1
@@ -1722,10 +2130,10 @@ count citizens with [dict-value brain \"A\" = 2]
 11
 
 MONITOR
-1815
-232
-1873
-277
+1237
+633
+1295
+678
 3
 count citizens with [dict-value brain \"A\" = 3]
 1
@@ -1733,10 +2141,10 @@ count citizens with [dict-value brain \"A\" = 3]
 11
 
 MONITOR
-1870
-232
-1928
-277
+1292
+633
+1350
+678
 4
 count citizens with [dict-value brain \"A\" = 4]
 1
@@ -1761,10 +2169,10 @@ NIL
 0
 
 SLIDER
-535
-1007
-665
-1040
+832
+788
+962
+821
 threshold
 threshold
 0
@@ -1776,10 +2184,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-167
-312
-339
-345
+395
+424
+505
+457
 epsilon
 epsilon
 0
@@ -1797,7 +2205,7 @@ SWITCH
 91
 show-media-connections?
 show-media-connections?
-1
+0
 1
 -1000
 
@@ -1819,30 +2227,30 @@ NIL
 1
 
 TEXTBOX
-512
-288
-662
-306
+680
+305
+830
+323
 Number of citizens
 11
 0.0
 1
 
 TEXTBOX
-173
-275
-354
-303
-Threshold to subscribe to institutions
-11
+398
+362
+579
+390
+Connection Parameters
+12
 0.0
 1
 
 TEXTBOX
 25
 144
-175
-162
+193
+163
 Simulation Parameters
 14
 0.0
@@ -1859,25 +2267,25 @@ Simulation Controls
 1
 
 TEXTBOX
-1627
-15
-1777
-33
+1049
+415
+1199
+433
 Simulation State Plots
 14
 0.0
 1
 
 SLIDER
-510
-310
-682
-343
+678
+327
+850
+360
 N
 N
 0
 1000
-100.0
+50.0
 10
 1
 NIL
@@ -1897,29 +2305,29 @@ show-citizen-political?
 SWITCH
 300
 99
-467
+495
 132
 show-social-friends?
 show-social-friends?
-0
+1
 1
 -1000
 
 TEXTBOX
-1625
-43
-1775
-61
+1047
+444
+1197
+462
 Cognitive State
 11
 0.0
 1
 
 PLOT
-1118
-675
-1488
-825
+1047
+902
+1417
+1052
 Social Friend Degree of Nodes
 NIL
 NIL
@@ -1934,10 +2342,10 @@ PENS
 "default" 1.0 1 -16777216 true "" "set-plot-x-range 0 (max [count social-friend-neighbors] of citizens) + 1\nhistogram [count social-friend-neighbors] of citizens"
 
 CHOOSER
-339
-1060
-481
-1105
+684
+737
+826
+782
 spread-type
 spread-type
 "simple" "complex" "cognitive"
@@ -1954,34 +2362,34 @@ Display
 1
 
 SWITCH
-29
-737
-148
-770
+32
+829
+151
+862
 load-graph?
 load-graph?
-1
+0
 1
 -1000
 
 INPUTBOX
-27
-777
-242
-837
+29
+869
+244
+929
 load-graph-path
-D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/simulation-data/29-May-2022-conditions-to-polarize-cognitive/graphs/2-appeal-mode-polarized-polarized-2-ba-homophilic-3-3.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/16-Feb-2023-parameter-sweep-low-res/graphs/0-broadcast-brain-polarized-15-polarized-1-0.75-5-1.csv
 1
 0
 String
 
 INPUTBOX
-29
-843
-244
-903
+32
+935
+247
+995
 save-graph-path
-D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/simulation-data/29-May-2022-conditions-to-polarize-cognitive/graphs/2-appeal-mode-polarized-polarized-2-barabasi-albert-3-0.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/16-Feb-2023-parameter-sweep-low-res/graphs/0-broadcast-brain-polarized-15-polarized-0.75-0.75-5-0.csv
 1
 0
 String
@@ -2004,20 +2412,20 @@ NIL
 1
 
 CHOOSER
-29
-1059
-182
-1104
+687
+859
+840
+904
 cognitive-fn
 cognitive-fn
 "linear-gullible" "linear-stubborn" "linear-mid" "threshold-gullible" "threshold-mid" "threshold-stubborn" "sigmoid-gullible" "sigmoid-stubborn" "sigmoid-mid"
 7
 
 SLIDER
-175
-1005
-349
-1038
+830
+699
+1004
+732
 simple-spread-chance
 simple-spread-chance
 0
@@ -2029,10 +2437,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-354
-1006
-528
-1039
+830
+737
+1004
+770
 complex-spread-ratio
 complex-spread-ratio
 0
@@ -2044,10 +2452,10 @@ NIL
 HORIZONTAL
 
 CHOOSER
-194
-1060
-333
-1105
+685
+788
+824
+833
 brain-type
 brain-type
 "discrete" "continuous"
@@ -2062,7 +2470,7 @@ tick-end
 tick-end
 30
 1000
-500.0
+200.0
 1
 1
 NIL
@@ -2074,16 +2482,16 @@ INPUTBOX
 526
 239
 sim-output-dir
-D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/simulation-data/
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/
 1
 0
 String
 
 PLOT
-732
-24
-1106
-312
+1485
+13
+1859
+301
 percent-agent-beliefs
 Steps
 % of Agents
@@ -2097,10 +2505,10 @@ false
 PENS
 
 MONITOR
-1925
-232
-1983
-277
+1347
+633
+1405
+678
 5
 count citizens with [dict-value brain \"A\" = 5]
 17
@@ -2108,10 +2516,10 @@ count citizens with [dict-value brain \"A\" = 5]
 11
 
 MONITOR
-1987
-232
-2045
-277
+1409
+633
+1467
+678
 6
 count citizens with [dict-value brain \"A\" = 6]
 17
@@ -2130,10 +2538,10 @@ media-agents?
 -1000
 
 SLIDER
-29
-1149
-202
-1182
+687
+949
+860
+982
 cognitive-exponent
 cognitive-exponent
 -10
@@ -2145,10 +2553,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-29
-1109
-202
-1142
+687
+909
+860
+942
 cognitive-scalar
 cognitive-scalar
 -20
@@ -2160,10 +2568,10 @@ NIL
 HORIZONTAL
 
 SWITCH
-209
-1109
-354
-1142
+867
+909
+1012
+942
 cognitive-scalar?
 cognitive-scalar?
 1
@@ -2171,10 +2579,10 @@ cognitive-scalar?
 -1000
 
 SWITCH
-213
-1150
-378
-1183
+870
+949
+1024
+982
 cognitive-exponent?
 cognitive-exponent?
 0
@@ -2182,10 +2590,10 @@ cognitive-exponent?
 -1000
 
 SLIDER
-29
-1195
-202
-1228
+687
+994
+860
+1027
 cognitive-translate
 cognitive-translate
 -10
@@ -2197,10 +2605,10 @@ NIL
 HORIZONTAL
 
 SWITCH
-213
-1195
-376
-1228
+870
+994
+1025
+1027
 cognitive-translate?
 cognitive-translate?
 0
@@ -2208,30 +2616,30 @@ cognitive-translate?
 -1000
 
 TEXTBOX
-33
-982
-221
-1005
+685
+668
+873
+691
 Contagion Parameters
-12
+14
 0.0
 1
 
 CHOOSER
-252
-732
-391
-777
+254
+824
+393
+869
 graph-type
 graph-type
 "erdos-renyi" "watts-strogatz" "barabasi-albert" "ba-homophilic" "mag" "facebook" "kronecker"
 2
 
 SLIDER
-254
-803
-377
-836
+257
+895
+380
+928
 erdos-renyi-p
 erdos-renyi-p
 0
@@ -2243,30 +2651,30 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-28
-273
-177
-303
+27
+280
+255
+299
 Institutional Agent Parameters
-12
+14
 0.0
 1
 
 TEXTBOX
-29
-690
-217
-713
+33
+780
+221
+803
 Graph Parameters
-12
+14
 0.0
 1
 
 SLIDER
-399
-756
-533
-789
+409
+900
+543
+933
 watts-strogatz-p
 watts-strogatz-p
 0
@@ -2278,10 +2686,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-400
-796
-527
-829
+409
+940
+536
+973
 watts-strogatz-k
 watts-strogatz-k
 0
@@ -2293,10 +2701,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-252
-869
-377
-902
+254
+962
+379
+995
 ba-m
 ba-m
 0
@@ -2308,30 +2716,30 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-254
-847
-369
-870
+257
+939
+372
+962
 Barabasi-Albert (ba)
 11
 0.0
 1
 
 CHOOSER
-250
-937
-389
-982
+252
+1029
+391
+1074
 mag-style
 mag-style
 "default" "homophilic" "heterophilic"
 0
 
 SWITCH
-34
-1005
-167
-1038
+685
+697
+818
+730
 contagion-on?
 contagion-on?
 1
@@ -2339,10 +2747,10 @@ contagion-on?
 -1000
 
 SLIDER
-497
-99
-670
-132
+504
+100
+677
+133
 belief-resolution
 belief-resolution
 0
@@ -2354,10 +2762,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-550
-834
-707
-867
+30
+1113
+187
+1146
 citizen-citizen-influence
 citizen-citizen-influence
 0
@@ -2369,10 +2777,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-552
-753
-705
-786
+33
+1032
+186
+1065
 citizen-media-influence
 citizen-media-influence
 0
@@ -2384,10 +2792,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-552
-793
-707
-826
+33
+1072
+188
+1105
 media-citizen-influence
 media-citizen-influence
 0
@@ -2399,20 +2807,20 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-553
-730
-703
-748
+34
+1008
+184
+1026
 Link weight settings
 11
 0.0
 1
 
 INPUTBOX
-399
-855
-542
-940
+409
+999
+552
+1084
 kronecker-seed
 [[0.6,0.16,0.24],\n  [0.40,0.2,0.4],\n  [0.21,0.14,0.65]]
 1
@@ -2420,10 +2828,10 @@ kronecker-seed
 String
 
 SLIDER
-399
-946
-491
-979
+409
+1090
+501
+1123
 kronecker-k
 kronecker-k
 0
@@ -2435,20 +2843,20 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-403
-836
-553
-854
+413
+980
+563
+998
 Kronecker
 11
 0.0
 1
 
 INPUTBOX
-28
-439
-244
-499
+25
+484
+241
+544
 messages-data-path
 D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/messaging-data/
 1
@@ -2456,10 +2864,10 @@ D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/messaging-dat
 String
 
 SLIDER
-207
-371
-320
-404
+208
+413
+321
+446
 message-repeats
 message-repeats
 0
@@ -2471,38 +2879,20 @@ NIL
 HORIZONTAL
 
 CHOOSER
-250
-441
-389
-486
+247
+485
+386
+530
 message-file
 message-file
 "default" "50-50" "gradual"
 2
 
 PLOT
-732
-320
-1106
-476
-homophily
-NIL
-NIL
-0.0
-10.0
-0.0
-1.0
-true
-false
-"" ""
-PENS
-"0" 1.0 0 -16777216 true "" "plot 1 / (1 + (item 0 graph-homophily))"
-
-PLOT
-733
-483
-1106
-638
+1487
+310
+1860
+465
 polarization
 NIL
 NIL
@@ -2516,99 +2906,81 @@ false
 PENS
 "0" 1.0 0 -16777216 true "" "plot graph-polarization \"A\""
 
-PLOT
-733
-647
-1108
-812
-disagreement
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"0" 1.0 0 -16777216 true "" "plot graph-disagreement \"A\""
-
 TEXTBOX
-256
-783
-406
-801
+258
+875
+408
+893
 Erdos-Renyi (random)
 11
 0.0
 1
 
 TEXTBOX
-399
-732
-549
-750
+409
+877
+559
+895
 Watts-Strogatz (small world)
 11
 0.0
 1
 
 TEXTBOX
-253
-916
-403
-934
+255
+1008
+405
+1026
 Multiplicate Attribute Graph
 11
 0.0
 1
 
 TEXTBOX
-29
-715
-179
-733
+32
+807
+182
+825
 Saving/loading
 11
 0.0
 1
 
 TEXTBOX
-510
-268
-660
-286
+679
+278
+829
+296
 Citizen Parameters
-12
+14
 0.0
 1
 
 CHOOSER
-512
-374
-650
-419
+679
+414
+817
+459
 citizen-init-dist
 citizen-init-dist
 "uniform" "normal" "polarized"
-0
+2
 
 TEXTBOX
-513
-356
-663
-374
+680
+375
+830
+398
 Initial belief distribution
-11
+12
 0.0
 1
 
 SLIDER
-510
-426
-638
-459
+840
+415
+968
+448
 cit-init-normal-mean
 cit-init-normal-mean
 0
@@ -2620,10 +2992,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-512
-465
-639
-498
+840
+454
+970
+487
 cit-init-normal-std
 cit-init-normal-std
 0
@@ -2635,68 +3007,50 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-29
-352
-179
-370
+30
+362
+180
+380
 Messaging tactics
-11
+12
 0.0
 1
 
 CHOOSER
-26
-371
-204
-416
+27
+412
+205
+457
 institution-tactic
 institution-tactic
 "predetermined" "broadcast-brain" "appeal-mean" "appeal-mode" "appeal-median" "max-reach-no-chain"
 1
 
 TEXTBOX
-31
-421
-181
-439
-Predetermined parameters
+28
+465
+277
+493
+If using predetermined tactics from a file
 11
 0.0
 1
 
-PLOT
-1119
-456
-1497
-670
-First degree power distribution
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\n\n;let power-dist agents-power \"A\"\n;let powers map [ agent -> (item 1 (item 0 agent)) ] power-dist \n;set-plot-x-range 0 (max powers)\n\n;histogram powers"
-
 CHOOSER
-28
-509
-167
-554
+27
+592
+166
+637
 media-ecosystem
 media-ecosystem
 "predetermined" "distribution"
 1
 
 INPUTBOX
-173
-509
-430
-569
+29
+675
+286
+735
 media-ecosystem-path
 D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/ecosystems/
 1
@@ -2704,20 +3058,20 @@ D:/school/grad-school/Tufts/research/cog-contagion-media-ecosystem/ecosystems/
 String
 
 CHOOSER
-27
-575
-172
-620
+183
+593
+328
+638
 media-ecosystem-dist
 media-ecosystem-dist
 "uniform" "normal" "polarized"
-0
+2
 
 SLIDER
-26
+483
+593
+633
 626
-176
-659
 media-dist-normal-mean
 media-dist-normal-mean
 0
@@ -2729,10 +3083,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-182
-627
-334
-660
+483
+633
+635
+666
 media-dist-normal-std
 media-dist-normal-std
 0
@@ -2744,35 +3098,35 @@ NIL
 HORIZONTAL
 
 SLIDER
-182
-587
-324
-620
+332
+593
+474
+626
 media-ecosystem-n
 media-ecosystem-n
 0
 100
-20.0
+15.0
 1
 1
 NIL
 HORIZONTAL
 
 CHOOSER
-344
-587
-486
-632
+290
+678
+432
+723
 media-ecosystem-file
 media-ecosystem-file
 "one-min" "one-mid" "one-max" "two-polarized" "two-mid" "three-polarized" "three-mid"
 5
 
 PLOT
-1618
-285
-2020
-435
+1047
+689
+1449
+839
 media-a-histogram
 NIL
 NIL
@@ -2784,13 +3138,13 @@ true
 false
 "" ""
 PENS
-"default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\nset-plot-x-range -1 (belief-resolution + 1)\n\nhistogram [dict-value brain \"A\"] of medias"
+"default" 1.0 1 -16777216 true "" "plot-pen-reset  ;; erase what we plotted before\nset-plot-x-range -1 (belief-resolution + 1)\nlet messages-by-media filter [m -> not empty? m ] (map [ m -> (last-n-of (map [ bel-val -> (item 1 bel-val) ] (media-messages-for-bel m \"A\")) cit-memory-len) ] (sort medias))\nlet media-bel-by-messages (map [ m -> round mean m ] messages-by-media)\nhistogram media-bel-by-messages\n;histogram [dict-value brain \"A\"] of medias"
 
 MONITOR
-1617
-442
-1675
-487
+1045
+847
+1103
+892
 0
 count medias with [dict-value brain \"A\" = 0]
 0
@@ -2798,10 +3152,10 @@ count medias with [dict-value brain \"A\" = 0]
 11
 
 MONITOR
-1679
-443
-1737
-488
+1108
+848
+1166
+893
 1
 count medias with [dict-value brain \"A\" = 1]
 0
@@ -2809,10 +3163,10 @@ count medias with [dict-value brain \"A\" = 1]
 11
 
 MONITOR
-1739
-443
-1797
-488
+1168
+848
+1226
+893
 2
 count medias with [dict-value brain \"A\" = 2]
 0
@@ -2820,10 +3174,10 @@ count medias with [dict-value brain \"A\" = 2]
 11
 
 MONITOR
-1802
-443
-1860
-488
+1230
+848
+1288
+893
 3
 count medias with [dict-value brain \"A\" = 3]
 0
@@ -2831,10 +3185,10 @@ count medias with [dict-value brain \"A\" = 3]
 11
 
 MONITOR
-1863
-444
-1921
-489
+1292
+849
+1350
+894
 4
 count medias with [dict-value brain \"A\" = 4]
 0
@@ -2842,10 +3196,10 @@ count medias with [dict-value brain \"A\" = 4]
 11
 
 MONITOR
-1924
-445
-1982
-490
+1353
+849
+1411
+894
 5
 count medias with [dict-value brain \"A\" = 5]
 0
@@ -2853,10 +3207,10 @@ count medias with [dict-value brain \"A\" = 5]
 11
 
 MONITOR
-1985
-445
-2043
-490
+1413
+849
+1471
+894
 6
 count medias with [dict-value brain \"A\" = 6]
 0
@@ -2864,24 +3218,101 @@ count medias with [dict-value brain \"A\" = 6]
 11
 
 SWITCH
-551
-882
-705
-915
+404
+825
+558
+858
 graph-homophily?
 graph-homophily?
+1
+1
+-1000
+
+SLIDER
+25
+215
+198
+248
+repetition
+repetition
+0
+10
+1.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+684
+582
+801
+615
+cit-memory-len
+cit-memory-len
+0
+20
+5.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+853
+590
+993
+623
+zeta-cit
+zeta-cit
+0
+1
+0.75
+0.01
+1
+NIL
+HORIZONTAL
+
+CHOOSER
+853
+542
+992
+587
+citizen-trust-fn
+citizen-trust-fn
+"average-bel"
+0
+
+SWITCH
+683
+542
+847
+575
+citizen-citizen-trust?
+citizen-citizen-trust?
+0
+1
+-1000
+
+SWITCH
+512
+503
+664
+536
+citizen-media-trust?
+citizen-media-trust?
 0
 1
 -1000
 
 PLOT
-1534
-537
-1907
-779
-chi-sq-citizens-media
-time
-p-value
+1488
+470
+1865
+632
+homophily
+NIL
+NIL
 0.0
 10.0
 0.0
@@ -2890,22 +3321,202 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "let cit-dist agent-brain-distribution citizens \"A\"\nlet media-dist agent-brain-distribution medias \"A\"\nlet chisq chi-sq cit-dist media-dist\nplot (item 1 chisq)"
+"default" 1.0 0 -16777216 true "" "plot 1 / (1 + (item 0 graph-homophily))"
 
 SLIDER
-22
-217
-195
-250
-repetition
-repetition
+397
+503
+510
+536
+zeta-media
+zeta-media
 0
-10
-5.0
 1
+0.75
+0.01
 1
 NIL
 HORIZONTAL
+
+TEXTBOX
+28
+389
+97
+412
+Tactic
+11
+0.0
+1
+
+TEXTBOX
+209
+377
+334
+405
+How many messages\nto send per tick
+11
+0.0
+1
+
+TEXTBOX
+398
+390
+586
+418
+Belief dist threshold for\nconnection (no trust)
+11
+0.0
+1
+
+TEXTBOX
+397
+468
+585
+496
+Trust threshold for\nconnection
+11
+0.0
+1
+
+TEXTBOX
+29
+563
+217
+586
+Media initialization
+12
+0.0
+1
+
+TEXTBOX
+185
+570
+373
+593
+Media distribution parameters
+11
+0.0
+1
+
+TEXTBOX
+485
+569
+604
+592
+If normal distribution
+11
+0.0
+1
+
+TEXTBOX
+30
+653
+290
+681
+If using predetermined ecosystem from a file
+11
+0.0
+1
+
+TEXTBOX
+27
+263
+676
+291
+========================================================================
+11
+0.0
+1
+
+TEXTBOX
+664
+268
+679
+873
+|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|\n|
+11
+0.0
+1
+
+TEXTBOX
+842
+394
+1030
+417
+Parameters for normal dist
+11
+0.0
+1
+
+TEXTBOX
+685
+505
+873
+533
+Trust parameters for\nconnection
+11
+0.0
+1
+
+TEXTBOX
+30
+760
+665
+779
+========================================================================
+11
+0.0
+1
+
+TEXTBOX
+684
+638
+1008
+657
+====================================
+11
+0.0
+1
+
+SWITCH
+538
+179
+673
+212
+matrix-spread?
+matrix-spread?
+0
+1
+-1000
+
+SWITCH
+539
+218
+694
+251
+matrix-trust-conn?
+matrix-trust-conn?
+0
+1
+-1000
+
+PLOT
+1491
+641
+1865
+839
+fragmentation
+NIL
+NIL
+0.0
+10.0
+0.0
+1.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot (1 / (1 + (item 0 graph-fragmentation)))"
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -3254,637 +3865,6 @@ NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 <experiments>
-  <experiment name="graph-exp-with-two-polarized" repetitions="10" sequentialRunOrder="false" runMetricsEveryStep="false">
-    <setup>setup
-set-cognitive-contagion-params
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-" belief-resolution)
-set contagion-dir (word run-dir "/" media-ecosystem "/" media-ecosystem-file "/" brain-type "/" spread-type "/" message-file "/" cognitive-fn "/" graph-type)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "'): os.mkdir('" run-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type "'): os.mkdir('" run-dir "/" brain-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type  "/" spread-type "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "/" cognitive-fn "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "/" cognitive-fn "')")
-;py:run (word "if not os.path.isdir('" contagion-dir "'): os.mkdir('" contagion-dir "')")</setup>
-    <go>go</go>
-    <final>let rand random 10000
-export-world (word contagion-dir "/" rand "_world.csv")
-export-plot "percent-agent-beliefs" (word contagion-dir "/" rand "_percent-agent-beliefs.csv")
-export-plot "homophily" (word contagion-dir "/" rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" rand "_polarization.csv")
-export-plot "disagreement" (word contagion-dir "/" rand "_disagreement.csv")</final>
-    <timeLimit steps="100"/>
-    <metric>count citizens</metric>
-    <enumeratedValueSet variable="belief-resolution">
-      <value value="7"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="brain-type">
-      <value value="&quot;discrete&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="250"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-fn">
-      <value value="&quot;sigmoid-stubborn&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="spread-type">
-      <value value="&quot;simple&quot;"/>
-      <value value="&quot;complex&quot;"/>
-      <value value="&quot;cognitive&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-file">
-      <value value="&quot;default&quot;"/>
-      <value value="&quot;50-50&quot;"/>
-      <value value="&quot;gradual&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="institution-tactic">
-      <value value="&quot;predetermined&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem-file">
-      <value value="&quot;two-polarized&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-repeats">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="citizen-init-dist">
-      <value value="&quot;uniform&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="epsilon">
-      <value value="0"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="graph-type">
-      <value value="&quot;erdos-renyi&quot;"/>
-      <value value="&quot;watts-strogatz&quot;"/>
-      <value value="&quot;barabasi-albert&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="erdos-renyi-p">
-      <value value="0.05"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-p">
-      <value value="0.5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-k">
-      <value value="5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="ba-m">
-      <value value="3"/>
-    </enumeratedValueSet>
-  </experiment>
-  <experiment name="influence-likelihood-paths" repetitions="100" runMetricsEveryStep="false">
-    <setup>setup</setup>
-    <go>show "wow"</go>
-    <timeLimit steps="1"/>
-    <metric>length (influencer-distance-paths (media 500) (one-of citizens with [dict-value brain "A" = 0]) [["A" 6]] 2)</metric>
-    <metric>length (influencer-distance-paths (media 500) (one-of citizens with [dict-value brain "A" = 1]) [["A" 6]] 2)</metric>
-    <metric>length (influencer-distance-paths (media 500) (one-of citizens with [dict-value brain "A" = 2]) [["A" 6]] 2)</metric>
-    <metric>length (influencer-distance-paths (media 500) (one-of citizens with [dict-value brain "A" = 3]) [["A" 6]] 2)</metric>
-    <metric>length (influencer-distance-paths (media 500) (one-of citizens with [dict-value brain "A" = 4]) [["A" 6]] 2)</metric>
-    <metric>length (influencer-distance-paths (media 500) (one-of citizens with [dict-value brain "A" = 5]) [["A" 6]] 2)</metric>
-    <metric>length (influencer-distance-paths (media 500) (one-of citizens with [dict-value brain "A" = 6]) [["A" 6]] 2)</metric>
-    <enumeratedValueSet variable="graph-type">
-      <value value="&quot;erdos-renyi&quot;"/>
-      <value value="&quot;barabasi-albert&quot;"/>
-      <value value="&quot;watts-strogatz&quot;"/>
-      <value value="&quot;mag&quot;"/>
-    </enumeratedValueSet>
-  </experiment>
-  <experiment name="simple-parameter-analysis" repetitions="100" runMetricsEveryStep="false">
-    <setup>setup
-let run-dir (word sim-output-dir "/simple-param-analysis/" substring date-time-safe 11 (length date-time-safe) "-" belief-resolution)
-set contagion-dir (word run-dir "/" simple-spread-chance "/" brain-type "/" message-file "/" graph-type)
-py:run (word "if not os.path.isdir('" run-dir "'): os.mkdir('" run-dir "')")
-py:run (word "if not os.path.isdir('" run-dir "/" simple-spread-chance "'): os.mkdir('" run-dir "/" simple-spread-chance "')")
-py:run (word "if not os.path.isdir('" run-dir "/" simple-spread-chance "/" brain-type "'): os.mkdir('" run-dir "/" simple-spread-chance "/" brain-type "')")
-py:run (word "if not os.path.isdir('" run-dir "/" simple-spread-chance "/" brain-type "/" message-file "'): os.mkdir('" run-dir "/" simple-spread-chance "/" brain-type "/" message-file "')")
-py:run (word "if not os.path.isdir('" contagion-dir "'): os.mkdir('" contagion-dir "')")</setup>
-    <go>go</go>
-    <final>let rand random 10000
-export-world (word contagion-dir "/" rand "_world.csv")
-export-plot "percent-agent-beliefs" (word contagion-dir "/" rand "_percent-agent-beliefs_" simple-spread-chance ".csv")</final>
-    <metric>count turtles</metric>
-    <steppedValueSet variable="simple-spread-chance" first="0.05" step="0.05" last="0.95"/>
-    <enumeratedValueSet variable="belief-resolution">
-      <value value="7"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="brain-type">
-      <value value="&quot;discrete&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="500"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="spread-type">
-      <value value="&quot;simple&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-file">
-      <value value="&quot;default&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="graph-type">
-      <value value="&quot;erdos-renyi&quot;"/>
-      <value value="&quot;watts-strogatz&quot;"/>
-      <value value="&quot;barabasi-albert&quot;"/>
-    </enumeratedValueSet>
-  </experiment>
-  <experiment name="complex-parameter-analysis" repetitions="100" runMetricsEveryStep="false">
-    <setup>setup
-let run-dir (word sim-output-dir "/complex-param-analysis/" substring date-time-safe 11 (length date-time-safe) "-" belief-resolution)
-set contagion-dir (word run-dir "/" complex-spread-ratio "/" brain-type "/" message-file "/" graph-type)
-py:run (word "if not os.path.isdir('" run-dir "'): os.mkdir('" run-dir "')")
-py:run (word "if not os.path.isdir('" run-dir "/" complex-spread-ratio "'): os.mkdir('" run-dir "/" complex-spread-ratio "')")
-py:run (word "if not os.path.isdir('" run-dir "/" complex-spread-ratio "/" brain-type "'): os.mkdir('" run-dir "/" complex-spread-ratio "/" brain-type "')")
-py:run (word "if not os.path.isdir('" run-dir "/" complex-spread-ratio "/" brain-type "/" message-file "'): os.mkdir('" run-dir "/" complex-spread-ratio "/" brain-type "/" message-file "')")
-py:run (word "if not os.path.isdir('" contagion-dir "'): os.mkdir('" contagion-dir "')")</setup>
-    <go>go</go>
-    <final>let rand random 10000
-export-world (word contagion-dir "/" rand "_world.csv")
-export-plot "percent-agent-beliefs" (word contagion-dir "/" rand "_percent-agent-beliefs_" complex-spread-ratio ".csv")</final>
-    <metric>count turtles</metric>
-    <steppedValueSet variable="complex-spread-ratio" first="0.05" step="0.05" last="0.95"/>
-    <enumeratedValueSet variable="belief-resolution">
-      <value value="7"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="brain-type">
-      <value value="&quot;discrete&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="500"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="spread-type">
-      <value value="&quot;complex&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-file">
-      <value value="&quot;gradual&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="graph-type">
-      <value value="&quot;erdos-renyi&quot;"/>
-      <value value="&quot;watts-strogatz&quot;"/>
-      <value value="&quot;barabasi-albert&quot;"/>
-    </enumeratedValueSet>
-  </experiment>
-  <experiment name="graph-exp-predetermined-ecosystems" repetitions="10" sequentialRunOrder="false" runMetricsEveryStep="false">
-    <setup>setup
-set-cognitive-contagion-params
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-predetermined-ecosystems-" belief-resolution)
-set contagion-dir (word run-dir "/" media-ecosystem "/" media-ecosystem-file "/" brain-type "/" citizen-init-dist "/" spread-type "/" message-file "/" cognitive-fn "/" graph-type)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "'): os.mkdir('" run-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type "'): os.mkdir('" run-dir "/" brain-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type  "/" spread-type "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "/" cognitive-fn "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "/" cognitive-fn "')")
-;py:run (word "if not os.path.isdir('" contagion-dir "'): os.mkdir('" contagion-dir "')")</setup>
-    <go>go</go>
-    <final>let rand random 10000
-export-world (word contagion-dir "/" rand "_world.csv")
-export-plot "percent-agent-beliefs" (word contagion-dir "/" rand "_percent-agent-beliefs.csv")
-export-plot "homophily" (word contagion-dir "/" rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" rand "_polarization.csv")
-export-plot "disagreement" (word contagion-dir "/" rand "_disagreement.csv")</final>
-    <timeLimit steps="100"/>
-    <metric>count citizens</metric>
-    <enumeratedValueSet variable="belief-resolution">
-      <value value="7"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="brain-type">
-      <value value="&quot;discrete&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="250"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-fn">
-      <value value="&quot;sigmoid-stubborn&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="spread-type">
-      <value value="&quot;simple&quot;"/>
-      <value value="&quot;complex&quot;"/>
-      <value value="&quot;cognitive&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-file">
-      <value value="&quot;default&quot;"/>
-      <value value="&quot;50-50&quot;"/>
-      <value value="&quot;gradual&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="institution-tactic">
-      <value value="&quot;predetermined&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem">
-      <value value="&quot;predetermined&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem-file">
-      <value value="&quot;two-polarized&quot;"/>
-      <value value="&quot;two-mid&quot;"/>
-      <value value="&quot;three-polarized&quot;"/>
-      <value value="&quot;three-mid&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-repeats">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="citizen-init-dist">
-      <value value="&quot;uniform&quot;"/>
-      <value value="&quot;normal&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-mean">
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-std">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="epsilon">
-      <value value="0"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="graph-type">
-      <value value="&quot;erdos-renyi&quot;"/>
-      <value value="&quot;watts-strogatz&quot;"/>
-      <value value="&quot;barabasi-albert&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="erdos-renyi-p">
-      <value value="0.05"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-p">
-      <value value="0.5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-k">
-      <value value="5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="ba-m">
-      <value value="3"/>
-    </enumeratedValueSet>
-  </experiment>
-  <experiment name="generated-ecosystems" repetitions="10" sequentialRunOrder="false" runMetricsEveryStep="false">
-    <setup>setup
-set-cognitive-contagion-params
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-generated-ecosystem-" belief-resolution)
-set contagion-dir (word run-dir "/" media-ecosystem "/" media-ecosystem-file "/" brain-type "/" spread-type "/" message-file "/" cognitive-fn "/" graph-type)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "'): os.mkdir('" run-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type "'): os.mkdir('" run-dir "/" brain-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type  "/" spread-type "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "/" cognitive-fn "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "/" cognitive-fn "')")
-;py:run (word "if not os.path.isdir('" contagion-dir "'): os.mkdir('" contagion-dir "')")</setup>
-    <go>go</go>
-    <final>let rand random 10000
-export-world (word contagion-dir "/" rand "_world.csv")
-export-plot "percent-agent-beliefs" (word contagion-dir "/" rand "_percent-agent-beliefs.csv")
-export-plot "homophily" (word contagion-dir "/" rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" rand "_polarization.csv")
-export-plot "disagreement" (word contagion-dir "/" rand "_disagreement.csv")</final>
-    <timeLimit steps="100"/>
-    <metric>count citizens</metric>
-    <enumeratedValueSet variable="belief-resolution">
-      <value value="7"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="brain-type">
-      <value value="&quot;discrete&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="250"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="contagion-on?">
-      <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-fn">
-      <value value="&quot;sigmoid-stubborn&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="spread-type">
-      <value value="&quot;simple&quot;"/>
-      <value value="&quot;complex&quot;"/>
-      <value value="&quot;cognitive&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-file">
-      <value value="&quot;default&quot;"/>
-      <value value="&quot;50-50&quot;"/>
-      <value value="&quot;gradual&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="institution-tactic">
-      <value value="&quot;predetermined&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem">
-      <value value="&quot;distribution&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem-dist">
-      <value value="&quot;uniform&quot;"/>
-      <value value="&quot;normal&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-dist-normal-mean">
-      <value value="1"/>
-      <value value="3"/>
-      <value value="5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-dist-normal-std">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem-n">
-      <value value="3"/>
-      <value value="5"/>
-      <value value="7"/>
-      <value value="9"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-repeats">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="citizen-init-dist">
-      <value value="&quot;uniform&quot;"/>
-      <value value="&quot;normal&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-mean">
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-std">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="epsilon">
-      <value value="0"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="graph-type">
-      <value value="&quot;erdos-renyi&quot;"/>
-      <value value="&quot;watts-strogatz&quot;"/>
-      <value value="&quot;barabasi-albert&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="erdos-renyi-p">
-      <value value="0.05"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-p">
-      <value value="0.5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-k">
-      <value value="5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="ba-m">
-      <value value="3"/>
-    </enumeratedValueSet>
-  </experiment>
-  <experiment name="contagion-vs-media" repetitions="10" sequentialRunOrder="false" runMetricsEveryStep="false">
-    <setup>setup
-set-cognitive-contagion-params
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-" belief-resolution)
-set contagion-dir (word run-dir "/" media-ecosystem "/" media-ecosystem-file "/" brain-type "/" spread-type "/" message-file "/" cognitive-fn "/" graph-type)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "'): os.mkdir('" run-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type "'): os.mkdir('" run-dir "/" brain-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type  "/" spread-type "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "/" cognitive-fn "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "/" cognitive-fn "')")
-;py:run (word "if not os.path.isdir('" contagion-dir "'): os.mkdir('" contagion-dir "')")</setup>
-    <go>go</go>
-    <final>let rand random 10000
-export-world (word contagion-dir "/" rand "_world.csv")
-export-plot "percent-agent-beliefs" (word contagion-dir "/" rand "_percent-agent-beliefs.csv")
-export-plot "homophily" (word contagion-dir "/" rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" rand "_polarization.csv")
-export-plot "disagreement" (word contagion-dir "/" rand "_disagreement.csv")</final>
-    <timeLimit steps="100"/>
-    <metric>count citizens</metric>
-    <enumeratedValueSet variable="belief-resolution">
-      <value value="7"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="brain-type">
-      <value value="&quot;discrete&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="250"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="contagion-on?">
-      <value value="true"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-fn">
-      <value value="&quot;sigmoid-stubborn&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="spread-type">
-      <value value="&quot;simple&quot;"/>
-      <value value="&quot;complex&quot;"/>
-      <value value="&quot;cognitive&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="institution-tactic">
-      <value value="&quot;broadcast-brain&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem-file">
-      <value value="&quot;two-mid&quot;"/>
-      <value value="&quot;two-polarized&quot;"/>
-      <value value="&quot;three-polarized&quot;"/>
-      <value value="&quot;three-mid&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem">
-      <value value="&quot;predetermined&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-repeats">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="citizen-init-dist">
-      <value value="&quot;uniform&quot;"/>
-      <value value="&quot;normal&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-mean">
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-std">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="epsilon">
-      <value value="0"/>
-      <value value="1"/>
-      <value value="2"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="graph-type">
-      <value value="&quot;erdos-renyi&quot;"/>
-      <value value="&quot;watts-strogatz&quot;"/>
-      <value value="&quot;barabasi-albert&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="erdos-renyi-p">
-      <value value="0.05"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-p">
-      <value value="0.5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-k">
-      <value value="5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="ba-m">
-      <value value="3"/>
-    </enumeratedValueSet>
-  </experiment>
-  <experiment name="epsilon-exp-predetermined-ecosystems" repetitions="10" sequentialRunOrder="false" runMetricsEveryStep="false">
-    <setup>setup
-set-cognitive-contagion-params
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-epsilon-predetermined-" belief-resolution)
-set contagion-dir (word run-dir "/" media-ecosystem "/" media-ecosystem-file "/" brain-type "/" citizen-init-dist "/" spread-type "/" message-file "/" cognitive-fn "/" graph-type)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "'): os.mkdir('" run-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type "'): os.mkdir('" run-dir "/" brain-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type  "/" spread-type "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "/" cognitive-fn "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "/" cognitive-fn "')")
-;py:run (word "if not os.path.isdir('" contagion-dir "'): os.mkdir('" contagion-dir "')")</setup>
-    <go>go</go>
-    <final>let rand random 10000
-export-world (word contagion-dir "/" rand "_world.csv")
-export-plot "percent-agent-beliefs" (word contagion-dir "/" rand "_percent-agent-beliefs.csv")
-export-plot "homophily" (word contagion-dir "/" rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" rand "_polarization.csv")
-export-plot "disagreement" (word contagion-dir "/" rand "_disagreement.csv")</final>
-    <timeLimit steps="100"/>
-    <metric>count citizens</metric>
-    <enumeratedValueSet variable="belief-resolution">
-      <value value="7"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="brain-type">
-      <value value="&quot;discrete&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="250"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="contagion-on?">
-      <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-fn">
-      <value value="&quot;sigmoid-stubborn&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="spread-type">
-      <value value="&quot;simple&quot;"/>
-      <value value="&quot;complex&quot;"/>
-      <value value="&quot;cognitive&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-file">
-      <value value="&quot;default&quot;"/>
-      <value value="&quot;50-50&quot;"/>
-      <value value="&quot;gradual&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="institution-tactic">
-      <value value="&quot;predetermined&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem">
-      <value value="&quot;predetermined&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem-file">
-      <value value="&quot;two-polarized&quot;"/>
-      <value value="&quot;two-mid&quot;"/>
-      <value value="&quot;three-polarized&quot;"/>
-      <value value="&quot;three-mid&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-repeats">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="citizen-init-dist">
-      <value value="&quot;uniform&quot;"/>
-      <value value="&quot;normal&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-mean">
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-std">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="epsilon">
-      <value value="0"/>
-      <value value="1"/>
-      <value value="2"/>
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="graph-type">
-      <value value="&quot;barabasi-albert&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="erdos-renyi-p">
-      <value value="0.05"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-p">
-      <value value="0.5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-k">
-      <value value="5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="ba-m">
-      <value value="3"/>
-    </enumeratedValueSet>
-  </experiment>
-  <experiment name="tactic-exp-predetermined-ecosystems" repetitions="10" sequentialRunOrder="false" runMetricsEveryStep="false">
-    <setup>setup
-set-cognitive-contagion-params
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-tactics-predetermined-" belief-resolution)
-set contagion-dir (word run-dir "/" media-ecosystem "/" media-ecosystem-file "/" brain-type "/" citizen-init-dist "/" spread-type "/" message-file "/" cognitive-fn "/" graph-type)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "'): os.mkdir('" run-dir "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type "'): os.mkdir('" run-dir "/" brain-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" media-ecosystem "/" media-ecosystem-file  "/" brain-type  "/" spread-type "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "')")
-;py:run (word "if not os.path.isdir('" run-dir "/" brain-type  "/" spread-type "/" message-file "/" cognitive-fn "'): os.mkdir('" run-dir "/" brain-type "/" spread-type "/" message-file "/" cognitive-fn "')")
-;py:run (word "if not os.path.isdir('" contagion-dir "'): os.mkdir('" contagion-dir "')")</setup>
-    <go>go</go>
-    <final>let rand random 10000
-export-world (word contagion-dir "/" rand "_world.csv")
-export-plot "percent-agent-beliefs" (word contagion-dir "/" rand "_percent-agent-beliefs.csv")
-export-plot "homophily" (word contagion-dir "/" rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" rand "_polarization.csv")
-export-plot "disagreement" (word contagion-dir "/" rand "_disagreement.csv")</final>
-    <timeLimit steps="100"/>
-    <metric>count citizens</metric>
-    <enumeratedValueSet variable="belief-resolution">
-      <value value="7"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="brain-type">
-      <value value="&quot;discrete&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="250"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="contagion-on?">
-      <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-fn">
-      <value value="&quot;sigmoid-stubborn&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="spread-type">
-      <value value="&quot;simple&quot;"/>
-      <value value="&quot;complex&quot;"/>
-      <value value="&quot;cognitive&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="institution-tactic">
-      <value value="&quot;broadcast-brain&quot;"/>
-      <value value="&quot;appeal-mean&quot;"/>
-      <value value="&quot;appeal-median&quot;"/>
-      <value value="&quot;appeal-mode&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem">
-      <value value="&quot;predetermined&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem-file">
-      <value value="&quot;two-polarized&quot;"/>
-      <value value="&quot;two-mid&quot;"/>
-      <value value="&quot;three-polarized&quot;"/>
-      <value value="&quot;three-mid&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-repeats">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="citizen-init-dist">
-      <value value="&quot;uniform&quot;"/>
-      <value value="&quot;normal&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-mean">
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-std">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="epsilon">
-      <value value="0"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="graph-type">
-      <value value="&quot;erdos-renyi&quot;"/>
-      <value value="&quot;watts-strogatz&quot;"/>
-      <value value="&quot;barabasi-albert&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="erdos-renyi-p">
-      <value value="0.05"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-p">
-      <value value="0.5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="watts-strogatz-k">
-      <value value="5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="ba-m">
-      <value value="3"/>
-    </enumeratedValueSet>
-  </experiment>
   <experiment name="conditions-to-polarization_cognitive" repetitions="10" runMetricsEveryStep="false">
     <setup>setup-py
 let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-conditions-to-polarize-cognitive")
@@ -3997,11 +3977,16 @@ export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-
     </enumeratedValueSet>
     <steppedValueSet variable="repetition" first="0" step="1" last="9"/>
   </experiment>
-  <experiment name="conditions-to-polarization_cognitive_TEST" repetitions="2" runMetricsEveryStep="false">
+  <experiment name="parameter_sweep_TEST" repetitions="2" runMetricsEveryStep="false">
     <setup>setup-py
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-conditions-to-polarize-cognitive")
+let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-parameter-sweep-TEST")
 let graphs-path (word run-dir "/graphs")
-let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" citizen-init-dist "-" epsilon "-" graph-type "-" ba-m "-" repetition ".csv")
+carefully [
+  if not (py:runresult (word "os.path.isdir('" graphs-path "')")) [
+    py:run (word "create_nested_dirs('" graphs-path "')")
+  ]
+] [ ]
+let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" media-ecosystem-n "-" citizen-init-dist "-" zeta-cit "-" zeta-media "-" cit-memory-len "-" repetition ".csv")
 ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
   set load-graph? true
   set load-graph-path graph-file
@@ -4009,26 +3994,42 @@ ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
 ] [
   set load-graph? false
   set save-graph-path graph-file
-  py:run (word "create_nested_dirs('" graphs-path "')")
   setup
   save-graph
 ]
-set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" citizen-init-dist "/" epsilon "/" graph-type "/" ba-m "/" repetition)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-set behavior-rand random 10000
-export-plot "cit-a-histogram" (word contagion-dir "/" behavior-rand "_cit-a-histogram.csv")
-export-plot "media-a-histogram" (word contagion-dir "/" behavior-rand "_media-a-histogram.csv")</setup>
+set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" media-ecosystem-n "/" citizen-init-dist "/" zeta-cit "/" zeta-media "/" cit-memory-len "/" repetition)
+carefully [
+  if not (py:runresult (word "os.path.isdir('" contagion-dir "')")) [
+    py:run (word "create_nested_dirs('" contagion-dir "')")
+  ]
+] [ ]</setup>
     <go>go</go>
-    <final>export-world (word contagion-dir "/" behavior-rand "_world.csv")
+    <final>set behavior-rand random 10000
+export-world (word contagion-dir "/" behavior-rand "_world.csv")
 export-plot "percent-agent-beliefs" (word contagion-dir "/" behavior-rand "_percent-agent-beliefs.csv")
 export-plot "homophily" (word contagion-dir "/" behavior-rand "_homophily.csv")
 export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")
-export-plot "disagreement" (word contagion-dir "/" behavior-rand "_disagreement.csv")
-export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-sq-cit-media.csv")</final>
-    <timeLimit steps="10"/>
+export-plot "fragmentation" (word contagion-dir "/" behavior-rand "_fragmentation.csv")
+output-message-data contagion-dir behavior-rand</final>
+    <timeLimit steps="100"/>
     <metric>count citizens</metric>
     <enumeratedValueSet variable="belief-resolution">
       <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tick-end">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="matrix-spread?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="matrix-trust-conn?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-media-trust?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-citizen-trust?">
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="brain-type">
       <value value="&quot;discrete&quot;"/>
@@ -4036,113 +4037,14 @@ export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-
     <enumeratedValueSet variable="N">
       <value value="50"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="contagion-on?">
-      <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-fn">
-      <value value="&quot;sigmoid-stubborn&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="spread-type">
-      <value value="&quot;cognitive&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-scalar">
-      <value value="20"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-exponent">
-      <value value="4"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-translate">
-      <value value="0"/>
-      <value value="1"/>
-      <value value="2"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="institution-tactic">
-      <value value="&quot;broadcast-brain&quot;"/>
-      <value value="&quot;appeal-mean&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem">
-      <value value="&quot;distribution&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem-dist">
-      <value value="&quot;uniform&quot;"/>
-      <value value="&quot;normal&quot;"/>
-      <value value="&quot;polarized&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-dist-normal-mean">
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-dist-normal-std">
-      <value value="1"/>
-    </enumeratedValueSet>
     <enumeratedValueSet variable="media-ecosystem-n">
-      <value value="30"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-repeats">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="citizen-init-dist">
-      <value value="&quot;uniform&quot;"/>
-      <value value="&quot;normal&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-mean">
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-std">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="epsilon">
-      <value value="0"/>
-      <value value="1"/>
-      <value value="2"/>
-      <value value="3"/>
+      <value value="20"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="graph-type">
       <value value="&quot;barabasi-albert&quot;"/>
-      <value value="&quot;ba-homophilic&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="ba-m">
       <value value="3"/>
-    </enumeratedValueSet>
-    <steppedValueSet variable="repetition" first="0" step="1" last="1"/>
-  </experiment>
-  <experiment name="polarizing-conditions_cognitive" repetitions="10" runMetricsEveryStep="false">
-    <setup>setup-py
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-polarizing-conditions-cognitive")
-let graphs-path (word run-dir "/graphs")
-let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" citizen-init-dist "-" epsilon "-" graph-type "-" ba-m "-" repetition ".csv")
-ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
-  set load-graph? true
-  set load-graph-path graph-file
-  setup
-] [
-  set load-graph? false
-  set save-graph-path graph-file
-  py:run (word "create_nested_dirs('" graphs-path "')")
-  setup
-  save-graph
-]
-set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" citizen-init-dist "/" epsilon "/" graph-type "/" ba-m "/" repetition)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-set behavior-rand random 10000
-export-plot "cit-a-histogram" (word contagion-dir "/" behavior-rand "_cit-a-histogram.csv")
-export-plot "media-a-histogram" (word contagion-dir "/" behavior-rand "_media-a-histogram.csv")</setup>
-    <go>go</go>
-    <final>export-world (word contagion-dir "/" behavior-rand "_world.csv")
-export-plot "percent-agent-beliefs" (word contagion-dir "/" behavior-rand "_percent-agent-beliefs.csv")
-export-plot "homophily" (word contagion-dir "/" behavior-rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")
-export-plot "disagreement" (word contagion-dir "/" behavior-rand "_disagreement.csv")
-export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-sq-cit-media.csv")</final>
-    <timeLimit steps="50"/>
-    <metric>count citizens</metric>
-    <enumeratedValueSet variable="belief-resolution">
-      <value value="7"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="brain-type">
-      <value value="&quot;discrete&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="300"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="contagion-on?">
       <value value="false"/>
@@ -4160,120 +4062,19 @@ export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-
       <value value="4"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="cognitive-translate">
-      <value value="0"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="institution-tactic">
-      <value value="&quot;broadcast-brain&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem">
-      <value value="&quot;distribution&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem-dist">
-      <value value="&quot;uniform&quot;"/>
-      <value value="&quot;polarized&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-dist-normal-mean">
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-dist-normal-std">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="media-ecosystem-n">
-      <value value="30"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="message-repeats">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="citizen-init-dist">
-      <value value="&quot;uniform&quot;"/>
-      <value value="&quot;normal&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-mean">
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cit-init-normal-std">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="epsilon">
       <value value="0"/>
       <value value="1"/>
       <value value="2"/>
-      <value value="3"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="graph-type">
-      <value value="&quot;ba-homophilic&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="ba-m">
-      <value value="3"/>
-    </enumeratedValueSet>
-    <steppedValueSet variable="repetition" first="0" step="1" last="3"/>
-  </experiment>
-  <experiment name="nonpolarizing-conditions_cognitive" repetitions="10" runMetricsEveryStep="false">
-    <setup>setup-py
-let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-nonpolarizing-conditions-cognitive")
-let graphs-path (word run-dir "/graphs")
-let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" citizen-init-dist "-" epsilon "-" graph-type "-" ba-m "-" repetition ".csv")
-ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
-  set load-graph? true
-  set load-graph-path graph-file
-  setup
-] [
-  set load-graph? false
-  set save-graph-path graph-file
-  py:run (word "create_nested_dirs('" graphs-path "')")
-  setup
-  save-graph
-]
-set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" citizen-init-dist "/" epsilon "/" graph-type "/" ba-m "/" repetition)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-set behavior-rand random 10000
-export-plot "cit-a-histogram" (word contagion-dir "/" behavior-rand "_cit-a-histogram.csv")
-export-plot "media-a-histogram" (word contagion-dir "/" behavior-rand "_media-a-histogram.csv")</setup>
-    <go>go</go>
-    <final>export-world (word contagion-dir "/" behavior-rand "_world.csv")
-export-plot "percent-agent-beliefs" (word contagion-dir "/" behavior-rand "_percent-agent-beliefs.csv")
-export-plot "homophily" (word contagion-dir "/" behavior-rand "_homophily.csv")
-export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")
-export-plot "disagreement" (word contagion-dir "/" behavior-rand "_disagreement.csv")
-export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-sq-cit-media.csv")</final>
-    <timeLimit steps="50"/>
-    <metric>count citizens</metric>
-    <enumeratedValueSet variable="belief-resolution">
-      <value value="7"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="brain-type">
-      <value value="&quot;discrete&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="300"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="contagion-on?">
-      <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-fn">
-      <value value="&quot;sigmoid-stubborn&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="spread-type">
-      <value value="&quot;cognitive&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-scalar">
-      <value value="20"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-exponent">
-      <value value="4"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="cognitive-translate">
-      <value value="0"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="institution-tactic">
       <value value="&quot;broadcast-brain&quot;"/>
       <value value="&quot;appeal-mean&quot;"/>
-      <value value="&quot;appeal-median&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="media-ecosystem">
       <value value="&quot;distribution&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="media-ecosystem-dist">
+      <value value="&quot;uniform&quot;"/>
       <value value="&quot;normal&quot;"/>
       <value value="&quot;polarized&quot;"/>
     </enumeratedValueSet>
@@ -4283,8 +4084,133 @@ export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-
     <enumeratedValueSet variable="media-dist-normal-std">
       <value value="1"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="message-repeats">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-init-dist">
+      <value value="&quot;uniform&quot;"/>
+      <value value="&quot;normal&quot;"/>
+      <value value="&quot;polarized&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cit-init-normal-mean">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cit-init-normal-std">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="zeta-media" first="0.25" step="0.25" last="1"/>
+    <steppedValueSet variable="zeta-cit" first="0.25" step="0.25" last="1"/>
+    <enumeratedValueSet variable="cit-memory-len">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="repetition" first="0" step="1" last="1"/>
+  </experiment>
+  <experiment name="parameter_sweep_TINYTEST" repetitions="2" runMetricsEveryStep="false">
+    <setup>setup-py
+let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-parameter-sweep-TINYTEST")
+let graphs-path (word run-dir "/graphs")
+carefully [
+  if not (py:runresult (word "os.path.isdir('" graphs-path "')")) [
+    py:run (word "create_nested_dirs('" graphs-path "')")
+  ]
+] [ ]
+let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" media-ecosystem-n "-" citizen-init-dist "-" epsilon "-" cit-memory-len "-" repetition ".csv")
+ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
+  set load-graph? true
+  set load-graph-path graph-file
+  setup
+] [
+  set load-graph? false
+  set save-graph-path graph-file
+  setup
+  save-graph
+]
+set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" media-ecosystem-n "/" citizen-init-dist "/" epsilon "/" cit-memory-len "/" repetition)
+carefully [
+  if not (py:runresult (word "os.path.isdir('" contagion-dir "')")) [
+    py:run (word "create_nested_dirs('" contagion-dir "')")
+  ]
+] [ ]</setup>
+    <go>go</go>
+    <final>set behavior-rand random 10000
+export-world (word contagion-dir "/" behavior-rand "_world.csv")
+export-plot "percent-agent-beliefs" (word contagion-dir "/" behavior-rand "_percent-agent-beliefs.csv")
+export-plot "homophily" (word contagion-dir "/" behavior-rand "_homophily.csv")
+export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")
+export-plot "fragmentation" (word contagion-dir "/" behavior-rand "_fragmentation.csv")
+output-message-data contagion-dir behavior-rand</final>
+    <timeLimit steps="100"/>
+    <metric>count citizens</metric>
+    <enumeratedValueSet variable="belief-resolution">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tick-end">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="matrix-spread?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="matrix-trust-conn?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-media-trust?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-citizen-trust?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="brain-type">
+      <value value="&quot;discrete&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="50"/>
+    </enumeratedValueSet>
     <enumeratedValueSet variable="media-ecosystem-n">
       <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="graph-type">
+      <value value="&quot;barabasi-albert&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="ba-m">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="contagion-on?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cognitive-fn">
+      <value value="&quot;sigmoid-stubborn&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="spread-type">
+      <value value="&quot;cognitive&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cognitive-scalar">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cognitive-exponent">
+      <value value="4"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cognitive-translate">
+      <value value="0"/>
+      <value value="1"/>
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="institution-tactic">
+      <value value="&quot;broadcast-brain&quot;"/>
+      <value value="&quot;appeal-mean&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="media-ecosystem">
+      <value value="&quot;distribution&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="media-ecosystem-dist">
+      <value value="&quot;uniform&quot;"/>
+      <value value="&quot;normal&quot;"/>
+      <value value="&quot;polarized&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="media-dist-normal-mean">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="media-dist-normal-std">
+      <value value="1"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="message-repeats">
       <value value="1"/>
@@ -4292,6 +4218,7 @@ export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-
     <enumeratedValueSet variable="citizen-init-dist">
       <value value="&quot;uniform&quot;"/>
       <value value="&quot;normal&quot;"/>
+      <value value="&quot;polarized&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="cit-init-normal-mean">
       <value value="3"/>
@@ -4301,15 +4228,139 @@ export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-
     </enumeratedValueSet>
     <enumeratedValueSet variable="epsilon">
       <value value="0"/>
-      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cit-memory-len">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="repetition" first="0" step="1" last="1"/>
+  </experiment>
+  <experiment name="parameter_sweep_low_res" repetitions="5" runMetricsEveryStep="false">
+    <setup>setup-py
+let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-parameter-sweep-low-res")
+let graphs-path (word run-dir "/graphs")
+carefully [
+  if not (py:runresult (word "os.path.isdir('" graphs-path "')")) [
+    py:run (word "create_nested_dirs('" graphs-path "')")
+  ]
+] [ ]
+let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" media-ecosystem-n "-" citizen-init-dist "-" zeta-cit "-" zeta-media "-" cit-memory-len "-" repetition ".csv")
+ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
+  set load-graph? true
+  set load-graph-path graph-file
+  setup
+] [
+  set load-graph? false
+  set save-graph-path graph-file
+  setup
+  save-graph
+]
+set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" media-ecosystem-n "/" citizen-init-dist "/" zeta-cit "/" zeta-media "/" cit-memory-len "/" repetition)
+carefully [
+  if not (py:runresult (word "os.path.isdir('" contagion-dir "')")) [
+    py:run (word "create_nested_dirs('" contagion-dir "')")
+  ]
+] [ ]</setup>
+    <go>go</go>
+    <final>set behavior-rand random 10000
+export-world (word contagion-dir "/" behavior-rand "_world.csv")
+export-plot "percent-agent-beliefs" (word contagion-dir "/" behavior-rand "_percent-agent-beliefs.csv")
+export-plot "homophily" (word contagion-dir "/" behavior-rand "_homophily.csv")
+export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")
+export-plot "fragmentation" (word contagion-dir "/" behavior-rand "_fragmentation.csv")
+output-message-data contagion-dir behavior-rand</final>
+    <timeLimit steps="200"/>
+    <metric>count citizens</metric>
+    <enumeratedValueSet variable="belief-resolution">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tick-end">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="matrix-spread?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="matrix-trust-conn?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-media-trust?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-citizen-trust?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="brain-type">
+      <value value="&quot;discrete&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="media-ecosystem-n">
+      <value value="15"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="graph-type">
-      <value value="&quot;ba-homophilic&quot;"/>
+      <value value="&quot;barabasi-albert&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="ba-m">
       <value value="3"/>
     </enumeratedValueSet>
-    <steppedValueSet variable="repetition" first="0" step="1" last="3"/>
+    <enumeratedValueSet variable="contagion-on?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cognitive-fn">
+      <value value="&quot;sigmoid-stubborn&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="spread-type">
+      <value value="&quot;cognitive&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cognitive-scalar">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cognitive-exponent">
+      <value value="4"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cognitive-translate">
+      <value value="0"/>
+      <value value="1"/>
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="institution-tactic">
+      <value value="&quot;broadcast-brain&quot;"/>
+      <value value="&quot;appeal-mean&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="media-ecosystem">
+      <value value="&quot;distribution&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="media-ecosystem-dist">
+      <value value="&quot;uniform&quot;"/>
+      <value value="&quot;normal&quot;"/>
+      <value value="&quot;polarized&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="media-dist-normal-mean">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="media-dist-normal-std">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="message-repeats">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-init-dist">
+      <value value="&quot;uniform&quot;"/>
+      <value value="&quot;normal&quot;"/>
+      <value value="&quot;polarized&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cit-init-normal-mean">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cit-init-normal-std">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="zeta-media" first="0.25" step="0.25" last="1"/>
+    <steppedValueSet variable="zeta-cit" first="0.25" step="0.25" last="1"/>
+    <enumeratedValueSet variable="cit-memory-len">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="repetition" first="0" step="1" last="4"/>
   </experiment>
 </experiments>
 @#$#@#$#@
