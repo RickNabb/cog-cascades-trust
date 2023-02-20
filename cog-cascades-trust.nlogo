@@ -2377,7 +2377,7 @@ INPUTBOX
 244
 929
 load-graph-path
-D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/16-Feb-2023-parameter-sweep-low-res/graphs/0-broadcast-brain-polarized-15-polarized-1-0.75-5-1.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/18-Feb-2023-parameter-sweep-low-res/graphs/2-appeal-mean-polarized-15-polarized-0.25-1-5-0.csv
 1
 0
 String
@@ -2388,7 +2388,7 @@ INPUTBOX
 247
 995
 save-graph-path
-D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/16-Feb-2023-parameter-sweep-low-res/graphs/0-broadcast-brain-polarized-15-polarized-0.75-0.75-5-0.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/18-Feb-2023-parameter-sweep-low-res/graphs/2-appeal-mean-polarized-15-polarized-1-1-5-2.csv
 1
 0
 String
@@ -2469,7 +2469,7 @@ tick-end
 tick-end
 30
 1000
-200.0
+100.0
 1
 1
 NIL
@@ -2597,7 +2597,7 @@ cognitive-translate
 cognitive-translate
 -10
 20
-1.0
+2.0
 1
 1
 NIL
@@ -3023,7 +3023,7 @@ CHOOSER
 institution-tactic
 institution-tactic
 "predetermined" "broadcast-brain" "appeal-mean" "appeal-mode" "appeal-median" "max-reach-no-chain"
-1
+2
 
 TEXTBOX
 28
@@ -3236,7 +3236,7 @@ repetition
 repetition
 0
 10
-1.0
+2.0
 1
 1
 NIL
@@ -3266,7 +3266,7 @@ zeta-cit
 zeta-cit
 0
 1
-0.5
+1.0
 0.01
 1
 NIL
@@ -3331,7 +3331,7 @@ zeta-media
 zeta-media
 0
 1
-0.5
+1.0
 0.01
 1
 NIL
@@ -3495,7 +3495,7 @@ SWITCH
 251
 matrix-trust-conn?
 matrix-trust-conn?
-1
+0
 1
 -1000
 
@@ -3864,10 +3864,15 @@ NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 <experiments>
-  <experiment name="conditions-to-polarization_cognitive" repetitions="10" runMetricsEveryStep="false">
+  <experiment name="static_model_parameter_sweep" repetitions="10" runMetricsEveryStep="false">
     <setup>setup-py
 let run-dir (word sim-output-dir substring date-time-safe 11 (length date-time-safe) "-conditions-to-polarize-cognitive")
 let graphs-path (word run-dir "/graphs")
+carefully [
+  if not (py:runresult (word "os.path.isdir('" graphs-path "')")) [
+    py:run (word "create_nested_dirs('" graphs-path "')")
+  ]
+] [ ]
 let graph-file (word graphs-path "/" cognitive-translate "-" institution-tactic "-" media-ecosystem-dist "-" citizen-init-dist "-" epsilon "-" graph-type "-" ba-m "-" repetition ".csv")
 ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
   set load-graph? true
@@ -3876,17 +3881,18 @@ ifelse (py:runresult (word "os.path.isfile('" graph-file "')")) [
 ] [
   set load-graph? false
   set save-graph-path graph-file
-  py:run (word "create_nested_dirs('" graphs-path "')")
   setup
   save-graph
 ]
 set contagion-dir (word run-dir "/" cognitive-translate "/" institution-tactic "/" media-ecosystem-dist "/" citizen-init-dist "/" epsilon "/" graph-type "/" ba-m "/" repetition)
-py:run (word "create_nested_dirs('" contagion-dir "')")
-set behavior-rand random 10000
-export-plot "cit-a-histogram" (word contagion-dir "/" behavior-rand "_cit-a-histogram.csv")
-export-plot "media-a-histogram" (word contagion-dir "/" behavior-rand "_media-a-histogram.csv")</setup>
+carefully [
+  if not (py:runresult (word "os.path.isdir('" contagion-dir "')")) [
+    py:run (word "create_nested_dirs('" contagion-dir "')")
+  ]
+] [ ]</setup>
     <go>go</go>
-    <final>export-world (word contagion-dir "/" behavior-rand "_world.csv")
+    <final>set behavior-rand random 10000
+export-world (word contagion-dir "/" behavior-rand "_world.csv")
 export-plot "percent-agent-beliefs" (word contagion-dir "/" behavior-rand "_percent-agent-beliefs.csv")
 export-plot "homophily" (word contagion-dir "/" behavior-rand "_homophily.csv")
 export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")
