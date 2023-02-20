@@ -19,6 +19,28 @@ from utils import curr_sigmoid_p, sigmoid_contagion_p, normal_dist_multiple
 RELEVANT EMPIRICAL DATA
 """
 
+AttributeValues = {
+  Attributes.A.name: {
+    "vals": normal_dist,
+    "depends_on": None
+  }
+}
+
+# AttributeDistributions = {
+#   Attributes.A.name: {
+#     "dist": ADist,
+#     "depends_on": None
+#   }
+# }
+
+AttributeMAGThetas = {
+  Attributes.A.name: {
+    'default': AMAGDefaultTheta,
+    'homophilic': AMAGHomophilicTheta,
+    'heterophilic': AMAGHeterophilicTheta
+  }   
+}
+
 # Attribute A distribution values
 HomophilicThetaRow = lambda row, l, p, s, d: [ 1/(1 + d + s * abs(pow(row - i, p))) for i in range(0, l) ]
 SquareHomophilicThetaRow = lambda row, l: HomophilicThetaRow(row, l, 2, 5, 0.25)

@@ -83,29 +83,6 @@ def random_sample(attr):
 def test_random_sample():
   print(random_sample(Attributes.VG))
 
-
-AttributeValues = {
-  Attributes.A.name: {
-    "vals": normal_dist,
-    "depends_on": None
-  }
-}
-
-# AttributeDistributions = {
-#   Attributes.A.name: {
-#     "dist": ADist,
-#     "depends_on": None
-#   }
-# }
-
-AttributeMAGThetas = {
-  Attributes.A.name: {
-    'default': AMAGDefaultTheta,
-    'homophilic': AMAGHomophilicTheta,
-    'heterophilic': AMAGHeterophilicTheta
-  }   
-}
-
 """
 ANALYSIS FUNCTIONS
 """
@@ -220,6 +197,46 @@ def process_multi_chart_data(in_path, in_filename='percent-agent-beliefs'):
   else:
     print(f'ERROR: Path not found {in_path}')
     return (-1, -1, -1)
+
+def process_message_data(in_path, rand_id):
+  '''
+  Analysis ideas:
+  - Mean and var difference of message exposure (heard) over time
+  - Mean and var difference of message belief over time
+  - Change in media messaging over time (color chart over time -- maybe stack plot)
+  - Do per run and then aggregate across runs with same paratmeres
+  '''
+  citizen_beliefs_file = f'{in_path}/{rand_id}_bel_over_time.json'
+  messages_believed_file = f'{in_path}/{rand_id}_messages_believed.json'
+  messages_heard_file = f'{in_path}/{rand_id}_messages_heard.json'
+  messages_sent_file = f'{in_path}/{rand_id}_messages_sent.json'
+  belief_data = json.load(citizen_beliefs_file)
+  messages_bel_data = json.load(messages_believed_file)
+  messages_sent_data = json.load(messages_sent_file)
+  ticks = len(belief_data)
+  belief_diffs = []
+  # TODO: Write the code to fill this in
+  heard_diffs = []
+  for tick in range(ticks):
+    belief_diffs_at_tick = np.array([])
+    heard_diffs_at_tick = np.array([])
+    belief_data_for_tick = belief_data[tick]
+    heard_data_for_tick = heard_data[tick]
+    for agent_data in belief_data_for_tick:
+      agent_id = list(agent_data.keys())[0]
+      agent_belief_at_tick = belief_file[tick][int(agent_id)]
+      messages_believed = agent_data[agent_id]
+
+      cur_agent_belief = agent_belief_at_tick
+      for message_id in messages_believed:
+        message = messages_sent_data[tick][message_id]
+        diff = dist_to_agent_brain(agent_belief_at_tick,message) 
+        belief_diffs_at_tick.append(diff)
+        # TODO: In reality, this should replace whatever proposition was
+        # believed, but since we are only modeling one for now, this suffices
+        curr_agent_belief = message
+    belief_diffs.append((belief_diffs_at_tick.mean(), belief_diffs_at_tick.var()))
+
 
 '''
 Given some multi-chart data, plot it and save the plot.
@@ -830,7 +847,7 @@ def get_all_multidata(param_combos, plots, path):
   return multi_datas
 
 def process_parameter_sweep_test_exp(path):
-  cognitive_translate = ['0', '1', '2']
+  cognitive_translate = ['0', '1']
   institution_tactic = ['broadcast-brain', 'appeal-mean']
   media_ecosystem_n = ['20']
   media_ecosystem_dist = [ 'uniform', 'normal', 'polarized' ]
@@ -843,11 +860,12 @@ def process_parameter_sweep_test_exp(path):
   repetition = list(map(str, range(2)))
 
   process_exp_outputs(
-    [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,graph_type,ba_m,repetition],
+    [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,repetition],
     {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
-    'polarization': [PLOT_TYPES.LINE]},
-    # 'polarization': [PLOT_TYPES.LINE],
-    # 'homophily': [PLOT_TYPES.LINE]},
+    # 'polarization': [PLOT_TYPES.LINE]},
+    'polarization': [PLOT_TYPES.LINE],
+    'fragmentation': [PLOT_TYPES.LINE],
+    'homophily': [PLOT_TYPES.LINE]},
     path)
 
 def process_parameter_sweep_tinytest_exp(path):
@@ -868,7 +886,6 @@ def process_parameter_sweep_tinytest_exp(path):
     # 'fragmentation': [PLOT_TYPES.LINE],
     # 'homophily': [PLOT_TYPES.LINE]},
     path)
-
 
 
 def get_conditions_to_polarization_multidata(path):
