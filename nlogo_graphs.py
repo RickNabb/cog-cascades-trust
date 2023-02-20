@@ -5,6 +5,7 @@ from Python to NetLogo.
 Author: Nick Rabb (nick.rabb2@gmail.com)
 '''
 
+from enum import Enum
 import networkx as nx
 import numpy as np
 import math
@@ -13,11 +14,35 @@ from messaging import dist_to_agent_brain, agent_trust_in_other_belief_func
 from random import random
 from functools import reduce
 from enums import INSTITUTION_ECOSYSTEM_TYPES, eco_file_names
-from utils import curr_sigmoid_p, sigmoid_contagion_p, normal_dist_multiple
+from utils import curr_sigmoid_p, sigmoid_contagion_p, normal_dist, normal_dist_multiple
+
+"""
+BELIEF ATTRIBUTES
+"""
+
+NUM_BELIEF_BUCKETS = 32
+
+discrete = range(NUM_BELIEF_BUCKETS)
+
+# class TestDiscrete7(Enum):
+#   STRONG_DISBELIEF=12
+#   DISBELIEF=1
+#   MOD_DISBELIEF=2
+#   UNCERTAIN=3
+#   MOD_BELIEF=4
+#   BELIEF=5
+#   STRONG_BELIEF=6
 
 """
 RELEVANT EMPIRICAL DATA
 """
+
+class Attributes(Enum):
+  A = discrete
+
+def attrs_as_array(attr):
+  # return map(lambda a: a.value, list(attr.value))
+  return attr.value
 
 AttributeValues = {
   Attributes.A.name: {
@@ -33,13 +58,13 @@ AttributeValues = {
 #   }
 # }
 
-AttributeMAGThetas = {
-  Attributes.A.name: {
-    'default': AMAGDefaultTheta,
-    'homophilic': AMAGHomophilicTheta,
-    'heterophilic': AMAGHeterophilicTheta
-  }   
-}
+# AttributeMAGThetas = {
+#   Attributes.A.name: {
+#     'default': AMAGDefaultTheta,
+#     'homophilic': AMAGHomophilicTheta,
+#     'heterophilic': AMAGHeterophilicTheta
+#   }   
+# }
 
 # Attribute A distribution values
 HomophilicThetaRow = lambda row, l, p, s, d: [ 1/(1 + d + s * abs(pow(row - i, p))) for i in range(0, l) ]

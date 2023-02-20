@@ -2469,7 +2469,7 @@ tick-end
 tick-end
 30
 1000
-100.0
+1.0
 1
 1
 NIL
@@ -2963,7 +2963,7 @@ CHOOSER
 citizen-init-dist
 citizen-init-dist
 "uniform" "normal" "polarized"
-2
+0
 
 TEXTBOX
 680
@@ -3105,7 +3105,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-15.0
+20.0
 1
 1
 NIL
@@ -3236,7 +3236,7 @@ repetition
 repetition
 0
 10
-2.0
+84.0
 1
 1
 NIL
@@ -4378,6 +4378,42 @@ output-message-data contagion-dir behavior-rand</final>
       <value value="5"/>
     </enumeratedValueSet>
     <steppedValueSet variable="repetition" first="0" step="1" last="4"/>
+  </experiment>
+  <experiment name="polarization_levels_across_graphs" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <timeLimit steps="1"/>
+    <metric>graph-polarization "A"</metric>
+    <enumeratedValueSet variable="belief-resolution">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tick-end">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="media-ecosystem-n">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="graph-type">
+      <value value="&quot;barabasi-albert&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="ba-m">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-init-dist">
+      <value value="&quot;uniform&quot;"/>
+      <value value="&quot;normal&quot;"/>
+      <value value="&quot;polarized&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cit-init-normal-mean">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cit-init-normal-std">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="repetition" first="0" step="1" last="99"/>
   </experiment>
 </experiments>
 @#$#@#$#@

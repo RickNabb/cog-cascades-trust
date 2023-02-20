@@ -1,4 +1,3 @@
-from enum import Enum
 from random import *
 from utils import *
 from statistics import mean, variance, mode
@@ -18,29 +17,7 @@ from nlogo_io import *
 
 DATA_DIR = 'D:/school/grad-school/Tufts/research/cog-cascades-trust'
 
-"""
-BELIEF ATTRIBUTES
-"""
 
-NUM_BELIEF_BUCKETS = 32
-
-discrete = range(NUM_BELIEF_BUCKETS)
-
-# class TestDiscrete7(Enum):
-#   STRONG_DISBELIEF=12
-#   DISBELIEF=1
-#   MOD_DISBELIEF=2
-#   UNCERTAIN=3
-#   MOD_BELIEF=4
-#   BELIEF=5
-#   STRONG_BELIEF=6
-
-class Attributes(Enum):
-  A = discrete
-
-def attrs_as_array(attr):
-  # return map(lambda a: a.value, list(attr.value))
-  return attr.value
 
 """
 STATS STUFF
@@ -846,6 +823,42 @@ def get_all_multidata(param_combos, plots, path):
       multi_datas[(combo,plot_name)] = multi_data
   return multi_datas
 
+def multidata_as_dataframe(multidata, columns):
+  df = pd.DataFrame(columns=(columns+['measure','pen_name','run','data']))
+  for (param_measure,data) in multidata.items():
+    param_combo = param_measure[0]
+    measure = param_measure[1]
+    for (pen_name,runs_data) in data.items():
+      for run in range(len(runs_data)):
+        df.loc[len(df.index)] = list(param_combo) + [measure,pen_name,run,runs_data[run]]
+  return df
+
+def read_polarization_dataframe(path):
+  df = pd.read_csv(path)
+  for i in range(len(df)):
+    raw_data = df.iloc[i]['data']
+    df.at[i,'data'] = np.fromstring(raw_data[1:-1].replace('\n','').replace('0. ','0 '),sep=' ')
+  return df
+
+def process_low_res_param_sweep_exp(path):
+  cognitive_translate = ['0', '1', '2']
+  institution_tactic = ['broadcast-brain', 'appeal-mean']
+  media_ecosystem_n = ['15']
+  media_ecosystem_dist = [ 'uniform', 'normal', 'polarized' ]
+  init_cit_dist = ['normal', 'uniform', 'polarized']
+  zeta_media = ['0.25','0.5','0.75','1']
+  zeta_cit = ['0.25','0.5','0.75','1']
+  citizen_memory_length = ['5']
+  repetition = list(map(str, range(5)))
+  process_exp_outputs(
+    [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_cit,zeta_media,citizen_memory_length,repetition],
+    {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
+    # 'polarization': [PLOT_TYPES.LINE]},
+    'polarization': [PLOT_TYPES.LINE],
+    'fragmentation': [PLOT_TYPES.LINE],
+    'homophily': [PLOT_TYPES.LINE]},
+    path)
+
 def process_parameter_sweep_test_exp(path):
   cognitive_translate = ['0', '1']
   institution_tactic = ['broadcast-brain', 'appeal-mean']
@@ -858,7 +871,6 @@ def process_parameter_sweep_test_exp(path):
   ba_m = ['3']
   graph_type = ['barabasi-albert']
   repetition = list(map(str, range(2)))
-
   process_exp_outputs(
     [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,repetition],
     {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
@@ -888,25 +900,30 @@ def process_parameter_sweep_tinytest_exp(path):
     path)
 
 
-def get_conditions_to_polarization_multidata(path):
+def get_low_res_sweep_multidata(path):
   cognitive_translate = ['0', '1', '2']
-  epsilon = ['0', '1', '2']
-  institution_tactic = ['broadcast-brain', 'appeal-mean', 'appeal-median']
+  institution_tactic = ['broadcast-brain', 'appeal-mean']
+  media_ecosystem_n = ['15']
   media_ecosystem_dist = [ 'uniform', 'normal', 'polarized' ]
-  # ba_m = ['3', '5', '10']
-  ba_m = ['3' ]
-  graph_types = [ 'ba-homophilic', 'barabasi-albert' ]
   init_cit_dist = ['normal', 'uniform', 'polarized']
-  repetition = list(map(str, range(2)))
+  zeta_media = ['0.25','0.5','0.75','1']
+  zeta_cit = ['0.25','0.5','0.75','1']
+  citizen_memory_length = ['5']
+  repetition = list(map(str, range(5)))
 
   return get_all_multidata(
-    [cognitive_translate,institution_tactic,media_ecosystem_dist,init_cit_dist,epsilon,graph_types,ba_m,repetition],
+    [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_cit,zeta_media,citizen_memory_length,repetition],
     {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
     'polarization': [PLOT_TYPES.LINE],
-    'disagreement': [PLOT_TYPES.LINE],
-    'homophily': [PLOT_TYPES.LINE],
-    'chi-sq-cit-media': [PLOT_TYPES.LINE]},
+    'fragmentation': [PLOT_TYPES.LINE],
+    'homophily': [PLOT_TYPES.LINE]},
     path)
+
+'''
+================
+ANALYSES OF RESULTS
+================
+'''
 
 def logistic_regression_polarization(polarization_data):
   '''
@@ -1082,7 +1099,8 @@ def polarization_stability_analysis(multidata):
   :param multidata: Multidata gathered from the experiment.
   '''
   threshold = 0.01
-  stability_df = pd.DataFrame(columns=['translate','tactic','media_dist','citizen_dist','epsilon','graph_type','ba-m','repetition','polarized?','polarizing','nonpolarizing','ratio_match'])
+  intercept = 8.5
+  stability_df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','polarized?','polarizing','nonpolarizing','ratio_match'])
 
   polarization_data = { key: value for (key,value) in multidata.items() if key[1] == 'polarization' }
   polarization_means = { key: value['0'].mean(0) for (key,value) in polarization_data.items() }
@@ -1097,7 +1115,7 @@ def polarization_stability_analysis(multidata):
         polarizing.append(run_data)
       elif model.coef_[0] <= threshold * -1:
         nonpolarizing.append(run_data)
-      elif model.intercept_ >= 8.5:
+      elif model.intercept_ >= intercept:
         polarizing.append(run_data)
       else:
         nonpolarizing.append(run_data)
@@ -1105,7 +1123,7 @@ def polarization_stability_analysis(multidata):
     nonpolarizing_ratio = len(nonpolarizing) / len(data['0'])
 
     model = LinearRegression().fit(x, polarization_means[param_combo])
-    polarized = model.coef_[0] >= threshold or (model.coef_[0] < threshold and model.coef_[0] > (threshold * -1) and model.intercept_ >= 8.5)
+    polarized = model.coef_[0] >= threshold or (model.coef_[0] < threshold and model.coef_[0] > (threshold * -1) and model.intercept_ >= intercept)
     match = polarizing_ratio if polarized else nonpolarizing_ratio
 
     stability_df.loc[len(stability_df.index)] = list(param_combo[0]) + [polarized, polarizing_ratio, nonpolarizing_ratio,match]
@@ -1136,8 +1154,9 @@ def polarization_analysis(multidata):
   polarization_means = { key: value['0'].mean(0) for (key,value) in polarization_data.items() }
   polarization_vars = { key: value['0'].var(0).mean() for (key,value) in polarization_data.items() }
   x = np.array([[val] for val in range(len(list(polarization_means.values())[0]))])
-  df = pd.DataFrame(columns=['translate','tactic','media_dist','citizen_dist','epsilon','graph_type','ba-m','repetition','lr-intercept','lr-slope','var','start','end','delta','max'])
+  df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','lr-intercept','lr-slope','var','start','end','delta','max'])
 
+    # [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_cit,zeta_media,citizen_memory_length,repetition],
   for (props, data) in polarization_means.items():
     model = LinearRegression().fit(x, data)
     df.loc[len(df.index)] = list(props[0]) + [model.intercept_,model.coef_[0],polarization_vars[props],data[0],data[-1],data[-1]-data[0],max(data)]
