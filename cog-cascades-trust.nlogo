@@ -722,9 +722,10 @@ to send-media-message-to-subscribers [ m message ]
             if citizen-citizen-trust? [
               add-agent-memory cit cit-sender
               add-message-to-memory cit cit-sender message
-              if not matrix-trust-conn? [
-                update-trust-connection cit cit-sender message
-              ]
+              ;; TODO: Right now, zeta matrix connection only does it for cit -> institution
+;              if not matrix-trust-conn? [
+              update-trust-connection cit cit-sender message
+;              ]
             ]
           ]
         ]
@@ -2307,7 +2308,7 @@ SWITCH
 132
 show-social-friends?
 show-social-friends?
-1
+0
 1
 -1000
 
@@ -2366,7 +2367,7 @@ SWITCH
 862
 load-graph?
 load-graph?
-0
+1
 1
 -1000
 
@@ -2596,7 +2597,7 @@ cognitive-translate
 cognitive-translate
 -10
 20
-0.0
+1.0
 1
 1
 NIL
@@ -3265,7 +3266,7 @@ zeta-cit
 zeta-cit
 0
 1
-0.75
+0.5
 0.01
 1
 NIL
@@ -3330,7 +3331,7 @@ zeta-media
 zeta-media
 0
 1
-0.75
+0.5
 0.01
 1
 NIL
@@ -3494,7 +3495,7 @@ SWITCH
 251
 matrix-trust-conn?
 matrix-trust-conn?
-0
+1
 1
 -1000
 
@@ -4266,13 +4267,13 @@ export-plot "homophily" (word contagion-dir "/" behavior-rand "_homophily.csv")
 export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.csv")
 export-plot "fragmentation" (word contagion-dir "/" behavior-rand "_fragmentation.csv")
 output-message-data contagion-dir behavior-rand</final>
-    <timeLimit steps="200"/>
+    <timeLimit steps="100"/>
     <metric>count citizens</metric>
     <enumeratedValueSet variable="belief-resolution">
       <value value="7"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="tick-end">
-      <value value="200"/>
+      <value value="100"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-spread?">
       <value value="true"/>
