@@ -3906,11 +3906,23 @@ export-plot "chi-sq-citizens-media" (word contagion-dir "/" behavior-rand "_chi-
     <enumeratedValueSet variable="tick-end">
       <value value="100"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="matrix-spread?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="matrix-trust-conn?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-media-trust?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="citizen-citizen-trust?">
+      <value value="false"/>
+    </enumeratedValueSet>
     <enumeratedValueSet variable="brain-type">
       <value value="&quot;discrete&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="N">
-      <value value="500"/>
+      <value value="250"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="contagion-on?">
       <value value="false"/>
