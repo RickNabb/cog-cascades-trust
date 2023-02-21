@@ -1,3 +1,4 @@
+from enum import Enum
 from random import *
 from utils import *
 from statistics import mean, variance, mode
@@ -924,6 +925,30 @@ def get_low_res_sweep_multidata(path):
 ANALYSES OF RESULTS
 ================
 '''
+
+def runs_with_unconnected_institution_graphs(graphs_path):
+  '''
+  Analyze the files in the graphs directory to find which ones
+  initially have citizen agents connected to media agents, and which ones
+  are unconnected.
+
+  :param graphs_path: The path to the graph output folder from the
+  BehaviorSpace simulation run.
+  '''
+  connected_graphs = []
+  unconnected_graphs = {}
+  df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','num_disconnected','media_without_edges'])
+  if os.path.isdir(graphs_path):
+    for file in os.listdir(graphs_path):
+      citizens, cit_social_edges, media, media_sub_edges  = read_graph(f'{graphs_path}/{file}')
+      media_with_edges = set([ m[1] for m in media_sub_edges ])
+      media_set = set([ m[0] for m in media ])
+      media_without_edges = media_set.difference(media_with_edges)
+      param_combo = file.replace('.csv','').replace('appeal-mean','appeal_mean').replace('broadcast-brain','broadcast_brain').split('-')
+      # print(param_combo)
+      # This is hardcoded to be half of the 15 we simulated
+      df.loc[len(df.index)] = param_combo + [len(media_without_edges),media_without_edges]
+  return df
 
 def logistic_regression_polarization(polarization_data):
   '''
