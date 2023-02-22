@@ -2597,7 +2597,7 @@ cognitive-translate
 cognitive-translate
 -10
 20
-2.0
+0.0
 1
 1
 NIL
@@ -2963,7 +2963,7 @@ CHOOSER
 citizen-init-dist
 citizen-init-dist
 "uniform" "normal" "polarized"
-0
+2
 
 TEXTBOX
 680
@@ -3236,7 +3236,7 @@ repetition
 repetition
 0
 10
-84.0
+91.0
 1
 1
 NIL
@@ -4372,10 +4372,11 @@ output-message-data contagion-dir behavior-rand</final>
     <enumeratedValueSet variable="cit-init-normal-std">
       <value value="1"/>
     </enumeratedValueSet>
-    <steppedValueSet variable="zeta-media" first="0.25" step="0.25" last="1"/>
-    <steppedValueSet variable="zeta-cit" first="0.25" step="0.25" last="1"/>
+    <steppedValueSet variable="zeta-media" first="0.25" step="0.25" last="0.75"/>
+    <steppedValueSet variable="zeta-cit" first="0.25" step="0.25" last="0.75"/>
     <enumeratedValueSet variable="cit-memory-len">
-      <value value="5"/>
+      <value value="1"/>
+      <value value="2"/>
     </enumeratedValueSet>
     <steppedValueSet variable="repetition" first="0" step="1" last="4"/>
   </experiment>
@@ -4386,6 +4387,9 @@ output-message-data contagion-dir behavior-rand</final>
     <metric>graph-polarization "A"</metric>
     <enumeratedValueSet variable="belief-resolution">
       <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="load-graph?">
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="tick-end">
       <value value="1"/>
