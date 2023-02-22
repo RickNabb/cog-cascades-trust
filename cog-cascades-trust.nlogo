@@ -742,12 +742,17 @@ to send-media-message-to-subscribers [ m message ]
               update-trust-connection cit m message
             ]
           ]
-          foreach (dict-value heard-from (word i)) [ sender ->
-            let cit-sender (citizen sender)
-            if citizen-citizen-trust? [
+          let cits-heard-from []
+          ifelse cits-hear-from-path? [
+            set cits-heard-from (map [ c -> read-from-string c ] (dict-value (spread-path heard-from i) "nodes"))
+          ] [
+            set cits-heard-from (dict-value heard-from (word i))
+          ]
+          foreach cits-heard-from [ c ->
+            let cit-sender (citizen c)
+            if (cit-sender != cit) and citizen-citizen-trust? [
               add-agent-memory cit cit-sender
               add-message-to-memory cit cit-sender message
-              ;; TODO: Right now, zeta matrix connection only does it for cit -> institution
               if not matrix-trust-conn? [
                 update-trust-connection cit cit-sender message
               ]
@@ -1452,6 +1457,13 @@ to-report spread-from-media [ med message limit ]
     set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
   ]
   let command (word "spread_from(nlogo_graph_to_nx(" citizen-arr "," edge-arr ")," (list-as-py-array cits false) "," (list-as-py-dict message true false) "," py-function "," limit ")")
+  report py:runresult(
+    command
+  )
+end
+
+to-report spread-path [ heard-from end-citizen ]
+  let command (word "reconstruct_spread_path(" (list-as-py-dict-rec heard-from true false) ",'" end-citizen "')")
   report py:runresult(
     command
   )
@@ -2327,7 +2339,7 @@ N
 N
 0
 1000
-50.0
+100.0
 10
 1
 NIL
@@ -3006,7 +3018,7 @@ CHOOSER
 citizen-init-dist
 citizen-init-dist
 "uniform" "normal" "polarized"
-2
+0
 
 TEXTBOX
 680
@@ -3309,7 +3321,7 @@ zeta-cit
 zeta-cit
 0
 1
-0.5
+0.25
 0.01
 1
 NIL
@@ -3374,7 +3386,7 @@ zeta-media
 zeta-media
 0
 1
-0.5
+0.25
 0.01
 1
 NIL
@@ -3559,6 +3571,17 @@ false
 "" ""
 PENS
 "default" 1.0 0 -16777216 true "" "plot (1 / (1 + (item 0 graph-fragmentation)))"
+
+SWITCH
+853
+504
+1020
+538
+cits-hear-from-path?
+cits-hear-from-path?
+0
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?

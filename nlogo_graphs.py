@@ -403,6 +403,22 @@ def citizen_media_initial_connections_by_zeta(citizen_beliefs, media_beliefs, ze
     trust_matrix += topic_trust
   return (trust_matrix / len(topics.keys()) >= zeta).astype(int)
 
+def reconstruct_spread_path(heard_from, end_citizen):
+  G = nx.DiGraph()
+  G.add_node(end_citizen)
+  G = reconstruct_spread_path_rec(heard_from, end_citizen, G)
+  return nlogo_safe_nodes_edges(G)
+
+def reconstruct_spread_path_rec(heard_from, cur_citizen, G):
+  if not heard_from[cur_citizen]:
+    return G
+  
+  for cit in heard_from[cur_citizen]:
+    G.add_node(cit)
+    G.add_edge(cit, cur_citizen)
+    G = reconstruct_spread_path_rec(heard_from, cit, G)
+  return G
+
 '''
 ANALYSIS FUNCTIONS
 '''
