@@ -834,6 +834,26 @@ def multidata_as_dataframe(multidata, columns):
         df.loc[len(df.index)] = list(param_combo) + [measure,pen_name,run,runs_data[run]]
   return df
 
+def dataframe_as_multidata(df):
+  multidata = {}
+  added_columns = ['measure','pen_name','run','data']
+  for row in df.itertuples():
+    param_columns = tuple([ col for col in df.columns if col not in added_columns ])
+    param_col_values = tuple([ getattr(row,col) for col in param_columns ])
+    measure = row.measure
+    pen_name = row.pen_name
+    key = (param_col_values,measure)
+    if key not in multidata:
+      multidata[key] = { }
+    
+    if pen_name not in multidata[key]:
+      multidata[key][pen_name] = np.array(row.data)
+    else:
+      data = multidata[key][pen_name]
+      multidata[key][pen_name] = np.vstack([data,row.data])
+          # means[key] = np.vstack([means[key], data_vector])
+  return multidata
+
 def read_polarization_dataframe(path):
   df = pd.read_csv(path)
   for i in range(len(df)):
@@ -1123,41 +1143,70 @@ def polarization_stability_analysis(multidata):
 
   :param multidata: Multidata gathered from the experiment.
   '''
+  # threshold = 0.0625
+  # intercept = 6.25
   threshold = 0.01
   intercept = 8.5
-  stability_df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','polarized?','polarizing','nonpolarizing','ratio_match'])
+  stability_df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','category','polarizing','depolarizing','remained_polarized','remained_nonpolarized','ratio_match'])
 
   polarization_data = { key: value for (key,value) in multidata.items() if key[1] == 'polarization' }
   polarization_means = { key: value['0'].mean(0) for (key,value) in polarization_data.items() }
   x = np.array([[val] for val in range(len(list(polarization_means.values())[0]))])
 
+  # short_keys = list(polarization_data.keys())[0:10]
+  # short_data = { key: val for (key,val) in polarization_data.items() if key in short_keys }
   for (param_combo, data) in polarization_data.items():
+  # for (param_combo, data) in short_data:
     polarizing = []
-    nonpolarizing = []
+    depolarizing = []
+    remained_polarized = []
+    remained_nonpolarized = []
     for run_data in data['0']:
       model = LinearRegression().fit(x, run_data)
       if model.coef_[0] >= threshold:
         polarizing.append(run_data)
       elif model.coef_[0] <= threshold * -1:
-        nonpolarizing.append(run_data)
+        depolarizing.append(run_data)
       elif model.intercept_ >= intercept:
-        polarizing.append(run_data)
+        remained_polarized.append(run_data)
       else:
-        nonpolarizing.append(run_data)
-    polarizing_ratio = len(polarizing) / len(data['0'])
-    nonpolarizing_ratio = len(nonpolarizing) / len(data['0'])
+        remained_nonpolarized.append(run_data)
+    num_runs = len(data['0'])
+    polarizing_ratio = len(polarizing) / num_runs
+    depolarizing_ratio = len(depolarizing) / num_runs
+    remain_polarized_ratio = len(remained_polarized) / num_runs
+    remain_nonpolarized_ratio = len(remained_nonpolarized) / num_runs
 
     model = LinearRegression().fit(x, polarization_means[param_combo])
-    polarized = model.coef_[0] >= threshold or (model.coef_[0] < threshold and model.coef_[0] > (threshold * -1) and model.intercept_ >= intercept)
-    match = polarizing_ratio if polarized else nonpolarizing_ratio
+    category = ''
+    if model.coef_[0] >= threshold:
+      category = 'polarized'
+    elif model.coef_[0] <= threshold * -1:
+      category = 'depolarized'
+    elif model.intercept_ >= intercept:
+      category = 'remained_polarized'
+    else:
+      category = 'remained_nonpolarized'
 
-    stability_df.loc[len(stability_df.index)] = list(param_combo[0]) + [polarized, polarizing_ratio, nonpolarizing_ratio,match]
+    category_to_ratio = {
+      'polarized': polarizing_ratio,
+      'depolarized': depolarizing_ratio,
+      'remained_polarized': remain_polarized_ratio,
+      'remained_nonpolarized': remain_nonpolarized_ratio
+    }
+    match = category_to_ratio[category]
+
+    stability_df.loc[len(stability_df.index)] = list(param_combo[0]) + [category,polarizing_ratio,depolarizing_ratio,remain_polarized_ratio,remain_nonpolarized_ratio,match]
   
-  diffs = [0.2, 0.4, 0.6, 0.8, 1]
-  diff_parts = { diff: stability_df[round(abs(stability_df['polarizing']-stability_df['nonpolarizing']),1) == diff] for diff in diffs }
-  diff_parts_span = { diff: { col: df[col].unique() for col in df.columns } for (diff, df) in diff_parts.items() }
+  # TODO: Pick up here
+  diffs = stability_df['ratio_match'].unique()
+  diff_parts = { diff: (stability_df['ratio_match'] == diff).sum() for diff in diffs }
+  # diffs = [0.2, 0.4, 0.6, 0.8, 1]
+  # diff_parts = { diff: stability_df[round(abs(stability_df['polarizing']-stability_df['depolarizing']),1) == diff] for diff in diffs }
+  # diff_parts_span = { diff: { col: df[col].unique() for col in df.columns } for (diff, df) in diff_parts.items() }
   
-  return { 'stability': stability_df, 'diff_parts': diff_parts, 'diff_span': diff_parts_span }
+  # return stability_df
+  return { 'stability': stability_df, 'diff_parts': diff_parts }
 
 def polarization_analysis(multidata):
   '''
@@ -1172,6 +1221,8 @@ def polarization_analysis(multidata):
 
   :param multidata: A collection of multidata for a given experiment.
   '''
+  # slope_threshold = 0.0625
+  # intercept_threshold = 6.25
   slope_threshold = 0.01
   intercept_threshold = 8.5
 
@@ -1181,7 +1232,6 @@ def polarization_analysis(multidata):
   x = np.array([[val] for val in range(len(list(polarization_means.values())[0]))])
   df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','lr-intercept','lr-slope','var','start','end','delta','max'])
 
-    # [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_cit,zeta_media,citizen_memory_length,repetition],
   for (props, data) in polarization_means.items():
     model = LinearRegression().fit(x, data)
     df.loc[len(df.index)] = list(props[0]) + [model.intercept_,model.coef_[0],polarization_vars[props],data[0],data[-1],data[-1]-data[0],max(data)]
@@ -1189,10 +1239,10 @@ def polarization_analysis(multidata):
   polarizing = df[df['lr-slope'] >= slope_threshold]
   depolarizing = df[df['lr-slope'] <= slope_threshold*-1]
   same = df[(df['lr-slope'] > slope_threshold*-1) & (df['lr-slope'] < slope_threshold)]
-  polarizing = polarizing.append(same[same['lr-intercept'] >= intercept_threshold])
-  depolarizing = depolarizing.append(same[same['lr-intercept'] < intercept_threshold])
+  remained_polarized = same[same['lr-intercept'] >= intercept_threshold]
+  remained_nonpolarized = same[same['lr-intercept'] < intercept_threshold]
 
-  return { 'polarizing': polarizing, 'nonpolarizing': depolarizing, 'same': same}
+  return { 'polarizing': polarizing, 'depolarizing': depolarizing, 'remained_polarized': remained_polarized, 'remained_nonpolarized': remained_nonpolarized}
 
 def polarizing_results_analysis(df):
   '''
