@@ -361,6 +361,26 @@ def citizen_media_connections_by_zeta(citizen_beliefs, citizen_memories, zeta, c
     trust_matrix += topic_trust
   return (trust_matrix / len(topics.keys()) >= zeta).astype(int)
 
+def citizen_citizen_connections_by_zeta(citizen_beliefs, citizen_memories, zeta, topics, trust_fn):
+  '''
+  Return a matrix of citizen connections based off of citizen trust in citizens
+  based on their memory of media messaging.
+
+  :param citizen_beliefs: An array of citizen brains but only their beliefs
+  :param citizen_memories: An array of citizen memories for media
+  :param zeta: The trust threshold for citizen-media connection
+  :param topics: A dictionary of topics and the beliefs they contain
+  :param trust_fn: A function to use for the trust calculation between
+  memories and citizen beliefs.
+  '''
+  num_citizens = len(citizen_beliefs)
+  trust_matrix = np.zeros((num_citizens,num_citizens))
+
+  for topic,topic_beliefs in topics.items():
+    topic_trust = np.array(([[ agent_trust_in_other_belief_func(citizen_memories[c][f'(citizen {i})'],citizen_beliefs[c],topic_beliefs,trust_fn) if f'(citizen {i})' in citizen_memories[c] else -1 for i in range(num_citizens) ] for c in range(num_citizens)]))
+    trust_matrix += topic_trust
+  return (trust_matrix / len(topics.keys()) >= zeta).astype(int)
+
 def citizen_media_initial_connections_by_zeta(citizen_beliefs, media_beliefs, zeta, citizen_memory, topics, trust_fn):
   '''
   Return a matrix of media subscribers based off of citizen trust in media

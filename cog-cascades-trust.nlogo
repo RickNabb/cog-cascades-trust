@@ -420,6 +420,27 @@ to connect-media-zeta
   ]
 end
 
+to connect-citizens-zeta
+  let zeta-conns cit-cit-connections-by-zeta
+
+  ask citizens [ ask social-friends [ die ] ]
+
+  let i 0
+  foreach zeta-conns [ soc-friends ->
+    let cit1 (citizen i)
+    let j 0
+    foreach soc-friends [ friend ->
+      let cit2 (citizen j)
+      if friend = 1 [ ask cit1 [
+        create-social-friend-from cit2
+        create-social-friend-to cit2
+      ] ]
+      set j j + 1
+    ]
+    set i i + 1
+  ]
+end
+
 to connect-all-media
   ask medias [
     let m self
@@ -570,6 +591,10 @@ to step
     if citizen-media-trust? and matrix-trust-conn? [
 ;      show "Reconnecting by zeta"
       connect-media-zeta
+    ]
+    if citizen-citizen-trust? and matrix-trust-conn? [
+;      show "Reconnecting by zeta"
+      connect-citizens-zeta
     ]
   ]
   if contagion-on? [
@@ -723,9 +748,9 @@ to send-media-message-to-subscribers [ m message ]
               add-agent-memory cit cit-sender
               add-message-to-memory cit cit-sender message
               ;; TODO: Right now, zeta matrix connection only does it for cit -> institution
-;              if not matrix-trust-conn? [
-              update-trust-connection cit cit-sender message
-;              ]
+              if not matrix-trust-conn? [
+                update-trust-connection cit cit-sender message
+              ]
             ]
           ]
         ]
@@ -1374,6 +1399,24 @@ to-report cit-media-connections-by-zeta
     set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
   ]
   let command (word "citizen_media_connections_by_zeta(" cit-beliefs "," cit-memories "," zeta-media "," cit-memory-len "," (length sort medias) "," (list-as-py-dict-rec topics true true) "," py-function ")")
+
+  report py:runresult(
+    command
+  )
+end
+
+to-report cit-cit-connections-by-zeta
+  let cit-beliefs list-as-py-array (map [ cit -> list-as-py-dict-rec (agent-brain-beliefs-as-dict cit) true false ] (sort citizens)) false
+  let cit-memories list-as-py-array (map [ cit -> list-as-py-dict-rec ([agent-messages-memory] of cit) true false ] (sort citizens)) false
+  let py-function ""
+
+;  show cit-beliefs
+;  show cit-memories
+
+  if citizen-trust-fn = "average-bel" [
+    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+  ]
+  let command (word "citizen_citizen_connections_by_zeta(" cit-beliefs "," cit-memories "," zeta-cit "," (list-as-py-dict-rec topics true true) "," py-function ")")
 
   report py:runresult(
     command
@@ -2204,7 +2247,7 @@ SWITCH
 91
 show-media-connections?
 show-media-connections?
-0
+1
 1
 -1000
 
@@ -2469,7 +2512,7 @@ tick-end
 tick-end
 30
 1000
-1.0
+100.0
 1
 1
 NIL
@@ -2597,7 +2640,7 @@ cognitive-translate
 cognitive-translate
 -10
 20
-0.0
+1.0
 1
 1
 NIL
@@ -3236,7 +3279,7 @@ repetition
 repetition
 0
 10
-91.0
+0.0
 1
 1
 NIL
@@ -3266,7 +3309,7 @@ zeta-cit
 zeta-cit
 0
 1
-1.0
+0.5
 0.01
 1
 NIL
@@ -3331,7 +3374,7 @@ zeta-media
 zeta-media
 0
 1
-1.0
+0.5
 0.01
 1
 NIL
