@@ -2477,7 +2477,7 @@ INPUTBOX
 244
 929
 load-graph-path
-D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/23-Feb-2023-parameter-sweep-low-res/graphs/1-broadcast-brain-uniform-15-normal-0.25-0.25-2-2_NEW.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/23-Feb-2023-parameter-sweep-low-res/graphs/1-broadcast-brain-uniform-15-normal-0.25-0.25-2-2_NEW_NEW2.csv
 1
 0
 String
@@ -2488,7 +2488,7 @@ INPUTBOX
 247
 995
 save-graph-path
-D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/23-Feb-2023-parameter-sweep-low-res/graphs/1-broadcast-brain-uniform-15-normal-0.25-0.25-2-2_NEW_NEW.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/23-Feb-2023-parameter-sweep-low-res/graphs/1-broadcast-brain-uniform-15-normal-0.25-0.25-2-2_NEW_NEW2.csv
 1
 0
 String
@@ -2697,7 +2697,7 @@ cognitive-translate
 cognitive-translate
 -10
 20
-0.0
+1.0
 1
 1
 NIL
@@ -3400,7 +3400,7 @@ SWITCH
 536
 citizen-media-trust?
 citizen-media-trust?
-1
+0
 1
 -1000
 
@@ -3624,7 +3624,7 @@ SWITCH
 537
 cits-hear-from-path?
 cits-hear-from-path?
-1
+0
 1
 -1000
 
@@ -4405,7 +4405,7 @@ output-message-data contagion-dir behavior-rand</final>
       <value value="100"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-spread?">
-      <value value="true"/>
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-trust-conn?">
       <value value="true"/>
@@ -4575,7 +4575,7 @@ output-message-data contagion-dir behavior-rand</final>
       <value value="100"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-spread?">
-      <value value="true"/>
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-trust-conn?">
       <value value="true"/>
@@ -4706,7 +4706,7 @@ output-message-data contagion-dir behavior-rand</final>
       <value value="100"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-spread?">
-      <value value="true"/>
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-trust-conn?">
       <value value="true"/>
