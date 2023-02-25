@@ -206,7 +206,7 @@ end
 to initialize-citizen-citizen-memory
   let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
   ask citizens [
-    foreach (sort social-friend-neighbors) [ neighbor ->
+    foreach (sort out-social-friend-neighbors) [ neighbor ->
       add-agent-memory self neighbor
       initialize-memory-from-init-belief self neighbor
     ]
@@ -549,7 +549,7 @@ to-report neighbor-distance [ cit ]
   let cit-distances []
   ask cit [
     let ego-brain brain
-    ask social-friend-neighbors [
+    ask out-social-friend-neighbors [
       set cit-distances lput (dist-between-agent-brains brain ego-brain) cit-distances
     ]
   ]
@@ -728,6 +728,10 @@ to send-media-message-to-subscribers [ m message ]
       let heard (dict-value spread-res "heard")
       let believed (dict-value spread-res "believed")
       let heard-from (dict-value spread-res "heard_from")
+      ; TODO: This does not seem to be working
+;      show (word "sending message from media " m)
+;      show (word "heard: " heard)
+;      show (word "heard from: " heard-from)
 
       let i 0
 ;      show "Starting update"
@@ -744,12 +748,26 @@ to send-media-message-to-subscribers [ m message ]
           ]
           let cits-heard-from []
           ifelse cits-hear-from-path? [
+            ; This is the old, more computationally expensive version
             set cits-heard-from (map [ c -> read-from-string c ] (dict-value (spread-path heard-from i) "nodes"))
+
+            ; Limit this to just the immediate prior sender -- a chain of length 2 for
+            ; computational efficiency
+;            let path (spread-path heard-from i)
+;            let heard-immediate (dict-value heard-from (word i))
+;            foreach heard-immediate [ c ->
+;              set cits-heard-from (lput c cits-heard-from)
+;              let heard-before (dict-value (dict-value path "edges") (word c))
+;              set cits-heard-from (lput (read-from-string heard-before) cits-heard-from)
+;            ]
           ] [
             set cits-heard-from (dict-value heard-from (word i))
           ]
           foreach cits-heard-from [ c ->
             let cit-sender (citizen c)
+;            show heard-from
+;            show (word "citizen " cit " heard from " cit-sender)
+;            show (word "the whole path was " (spread-path heard-from i))
             if (cit-sender != cit) and citizen-citizen-trust? [
               add-agent-memory cit cit-sender
               add-message-to-memory cit cit-sender message
@@ -767,17 +785,15 @@ to send-media-message-to-subscribers [ m message ]
       ]
 ;      show "Finished update"
     ] [
-      ask my-subscribers [
-        ask other-end [
-;          if not (heard-message? self ticks mid) [
-;            hear-message self mid message
-;            if (believe-message? self message) [
-;              believe-message self mid message
-;              spread-message m self m message mid
-;            ]
+      ask subscriber-neighbors [
+;        if not (heard-message? self ticks mid) [
+;          hear-message self mid message
+;          if (believe-message? self message) [
+;            believe-message self mid message
+;            spread-message m self m message mid
 ;          ]
-          receive-message m self m message mid
-        ]
+;        ]
+        receive-message m self [] message mid
       ]
     ]
     set cur-message-id (cur-message-id + 1)
@@ -828,7 +844,7 @@ to-report believe-message? [ cit message ]
   ]
   if spread-type = "complex" [
     let believing-neighbors 0
-    ask social-friend-neighbors [
+    ask out-social-friend-neighbors [
       let believes true
       foreach message [ m ->
         let attr (item 0 m)
@@ -839,7 +855,7 @@ to-report believe-message? [ cit message ]
         set believing-neighbors believing-neighbors + 1
       ]
     ]
-    if (believing-neighbors / length sort social-friend-neighbors) >= complex-spread-ratio [
+    if (believing-neighbors / length sort out-social-friend-neighbors) >= complex-spread-ratio [
       report true
     ]
   ]
@@ -879,10 +895,10 @@ end
 ;;
 ;; @param source - The original institutional agent who sent the message
 ;; @param cit - The citizen agent who is receiving the message.
-;; @param sender - The originator of the message (CURRENTLY NOT USED -- SHOULD BE REMOVED)
+;; @param senders - The chain of those who have shared this message
 ;; @param message - The message itself.
 ;; @param message-id - The unique ID of the message (used so the citizen agent does not duplicate shares)
-to receive-message [ source cit sender message message-id ]
+to receive-message [ source cit senders message message-id ]
   ask cit [
     if not (heard-message? self ticks message-id) [
       hear-message self message-id message
@@ -893,8 +909,10 @@ to receive-message [ source cit sender message message-id ]
         add-message-to-memory self source message
       ]
       if citizen-citizen-trust? [
-        add-agent-memory self sender
-        add-message-to-memory self sender message
+        foreach senders [ sender ->
+          add-agent-memory self sender
+          add-message-to-memory self sender message
+        ]
       ]
 
       if spread-type = "cognitive" [
@@ -907,14 +925,24 @@ to receive-message [ source cit sender message message-id ]
           set brain (believe-message-py brain message)
           believe-message self message-id message
 
-          ask social-friend-neighbors [
-            receive-message source self cit message message-id
+          ask out-social-friend-neighbors [
+            let new-senders []
+            ifelse cits-hear-from-path? [
+              set new-senders (lput cit senders)
+            ] [
+              set new-senders (list cit)
+            ]
+            receive-message source self new-senders message message-id
           ]
         ]
         update-citizen
         if not matrix-trust-conn? [
           if citizen-media-trust? [ update-trust-connection self source message ]
-          if citizen-citizen-trust? [ update-trust-connection self sender message ]
+          if citizen-citizen-trust? [
+            foreach senders [ sender ->
+              update-trust-connection self sender message
+            ]
+          ]
         ]
       ]
 
@@ -925,7 +953,7 @@ to receive-message [ source cit sender message message-id ]
           ;show (believe-message-py brain message)
           set brain (believe-message-py brain message)
           believe-message self message-id message
-          ask social-friend-neighbors [
+          ask out-social-friend-neighbors [
             receive-message source self cit message message-id
           ]
         ]
@@ -933,7 +961,7 @@ to receive-message [ source cit sender message message-id ]
 
       if spread-type = "complex" [
         let believing-neighbors 0
-        ask social-friend-neighbors [
+        ask out-social-friend-neighbors [
           let believes true
           foreach message [ m ->
             let attr (item 0 m)
@@ -945,12 +973,12 @@ to receive-message [ source cit sender message message-id ]
           ]
         ]
 ;        show (word "Citizen " cit "has ratio " (believing-neighbors / length sort social-friend-neighbors))
-        if (believing-neighbors / length sort social-friend-neighbors) >= complex-spread-ratio [
+        if (believing-neighbors / length sort out-social-friend-neighbors) >= complex-spread-ratio [
 ;          show (word "Citizen " cit " believing with ratio " (believing-neighbors / length sort social-friend-neighbors))
           set brain (believe-message-py brain message)
           believe-message self message-id message
           ;; Unsure if this sharing behavior is correct...
-          ask social-friend-neighbors [
+          ask out-social-friend-neighbors [
             receive-message source self cit message message-id
           ]
         ]
@@ -1097,6 +1125,11 @@ to add-agent-memory [ cit agente ]
     let all-beliefs (set-merge-lists (list citizen-priors citizen-malleables))
     let entry (dict-value agent-messages-memory agente)
     if entry = -1 [
+      if is-citizen? agente [
+;        show (word "adding new agent memory for " agente)
+;        show (word "prior memory " agent-messages-memory)
+;        show (word "neighborhood " sort out-social-friend-neighbors)
+      ]
       set agent-messages-memory (lput (list agente (map [ b -> list b [] ] all-beliefs)) agent-messages-memory)
     ]
   ]
@@ -1117,9 +1150,21 @@ end
 to save-graph
   ;; TODO: Find some way to get the prior & malleable attributes into a list rather than hardcoding
   let cit-ip ([(list self (dict-value brain "A") (dict-value brain "ID"))] of citizens)
-  let cit-social [[self] of both-ends] of social-friends
+;  let cit-social [[self] of both-ends] of social-friends
+  let cit-social []
+  foreach sort citizens [ cit ->
+    foreach sort [ out-social-friend-neighbors ] of cit [ nb ->
+      set cit-social (lput (list cit nb) cit-social)
+    ]
+  ]
   let media-ip ([(list self (dict-value brain "A"))] of medias)
-  let media-sub [[self] of both-ends] of subscribers
+;  let media-sub [[self] of both-ends] of subscribers
+  let media-sub []
+  foreach sort medias [ m ->
+    foreach sort [ subscriber-neighbors ] of m [ sub ->
+      set media-sub (lput (list m sub) media-sub)
+    ]
+  ]
   py:run (word "save_graph('" save-graph-path "','" cit-ip "','" cit-social "','" media-ip "','" media-sub "')")
 end
 
@@ -2432,7 +2477,7 @@ INPUTBOX
 244
 929
 load-graph-path
-D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/23-Feb-2023-parameter-sweep-low-res/graphs/0-appeal-mean-polarized-15-polarized-0.75-0.75-10-3.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/23-Feb-2023-parameter-sweep-low-res/graphs/1-broadcast-brain-uniform-15-normal-0.25-0.25-2-2_NEW_NEW2.csv
 1
 0
 String
@@ -2443,7 +2488,7 @@ INPUTBOX
 247
 995
 save-graph-path
-D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/23-Feb-2023-parameter-sweep-low-res/graphs/0-appeal-mean-polarized-15-polarized-0.75-0.75-10-0.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/23-Feb-2023-parameter-sweep-low-res/graphs/1-broadcast-brain-uniform-15-normal-0.25-0.25-2-2_NEW_NEW2.csv
 1
 0
 String
@@ -2652,7 +2697,7 @@ cognitive-translate
 cognitive-translate
 -10
 20
-0.0
+1.0
 1
 1
 NIL
@@ -3018,7 +3063,7 @@ CHOOSER
 citizen-init-dist
 citizen-init-dist
 "uniform" "normal" "polarized"
-2
+1
 
 TEXTBOX
 680
@@ -3078,7 +3123,7 @@ CHOOSER
 institution-tactic
 institution-tactic
 "predetermined" "broadcast-brain" "appeal-mean" "appeal-mode" "appeal-median" "max-reach-no-chain"
-2
+1
 
 TEXTBOX
 28
@@ -3119,7 +3164,7 @@ CHOOSER
 media-ecosystem-dist
 media-ecosystem-dist
 "uniform" "normal" "polarized"
-2
+0
 
 SLIDER
 483
@@ -3291,7 +3336,7 @@ repetition
 repetition
 0
 10
-3.0
+2.0
 1
 1
 NIL
@@ -3306,7 +3351,7 @@ cit-memory-len
 cit-memory-len
 0
 20
-10.0
+2.0
 1
 1
 NIL
@@ -3321,7 +3366,7 @@ zeta-cit
 zeta-cit
 0
 1
-0.75
+0.25
 0.01
 1
 NIL
@@ -3386,7 +3431,7 @@ zeta-media
 zeta-media
 0
 1
-0.75
+0.25
 0.01
 1
 NIL
@@ -3539,7 +3584,7 @@ SWITCH
 212
 matrix-spread?
 matrix-spread?
-0
+1
 1
 -1000
 
@@ -3576,7 +3621,7 @@ SWITCH
 853
 504
 1020
-538
+537
 cits-hear-from-path?
 cits-hear-from-path?
 0
@@ -4360,7 +4405,7 @@ output-message-data contagion-dir behavior-rand</final>
       <value value="100"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-spread?">
-      <value value="true"/>
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-trust-conn?">
       <value value="true"/>
@@ -4530,7 +4575,7 @@ output-message-data contagion-dir behavior-rand</final>
       <value value="100"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-spread?">
-      <value value="true"/>
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-trust-conn?">
       <value value="true"/>
@@ -4661,7 +4706,7 @@ output-message-data contagion-dir behavior-rand</final>
       <value value="100"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-spread?">
-      <value value="true"/>
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="matrix-trust-conn?">
       <value value="true"/>
