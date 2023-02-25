@@ -1000,12 +1000,16 @@ def polarization_total_analysis(data_dir):
     json.dump(fe_relative, f)
   with open(f'{data_dir}/polarization-by-frag-zeta-absolute.json','w') as f:
     json.dump(fe_absolute, f)
+  write_polarization_by_fragmentation_exposure(fe_absolute, data_dir, 'polarization-by-frag-zeta-absolute-LATEX.tex')
+  write_polarization_by_fragmentation_exposure(fe_relative, data_dir, 'polarization-by-frag-zeta-relative-LATEX.tex')
 
   (fe_relative_runs, fe_absolute_runs) = polarization_results_by_fragmentation_exposure(polarization_df_across_runs)
   with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-relative.json','w') as f:
     json.dump(fe_relative_runs, f)
   with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-absolute.json','w') as f:
     json.dump(fe_absolute_runs, f)
+  write_polarization_by_fragmentation_exposure(fe_absolute_runs, data_dir, 'polarization-across-reps-by-frag-zeta-absolute-LATEX.tex')
+  write_polarization_by_fragmentation_exposure(fe_relative_runs, data_dir, 'polarization-across-reps-by-frag-zeta-relative-LATEX.tex')
   print('finished polarization results by parameter breakdown')
 
   print('starting polarization fragmentation correlation analysis...')
@@ -1128,6 +1132,50 @@ def polarization_results_by_tactic_exposure(polarization_data):
       # Use this line to report number of results that are polarized
       # proportions[(gamma)] = {'polarized': len(partition_polarized), 'nonpolarized': len(partition_nonpolarized) }
 
+def write_polarization_by_fragmentation_exposure(proportions, data_dir, filename):
+  latex_format = """\\begingroup
+    \\setlength{\\tabcolsep}{6pt}
+    \\renewcommand{\\arraystretch}{1.5}
+    \\begin{table}[]
+      \\centering
+      \\begin{tabular}{c||c|c|c||c|c|c||c|c|c}
+      $\\zeta_c$ &\\multicolumn{3}{c||}{0.25}&\\multicolumn{3}{c||}{0.5}&\\multicolumn{3}{c}{0.75}\\\\
+      \\hline
+      \\hline
+      $\\gamma=2$ & 0.25,0.25,2 & 0.25,0.5,2 & 0.25,0.75,2 & 0.5,0.25,2 & 0.5,0.5,2 & 0.5,0.75,2 & 0.75,0.25,2 & 0.75,0.5,2 & 0.75,0.75,2\\\\
+      \\hline
+      $\\gamma=1$ & 0.25,0.25,1 & 0.25,0.5,1 & 0.25,0.75,1 & 0.5,0.25,1 & 0.5,0.5,1 & 0.5,0.75,1 & 0.75,0.25,1 & 0.75,0.5,1 & 0.75,0.75,1\\\\
+      \\hline
+      $\\gamma=0$ & 0.25,0.25,0 & 0.25,0.5,0 & 0.25,0.75,0 & 0.5,0.25,0 & 0.5,0.5,0 & 0.5,0.75,0 & 0.75,0.25,0 & 0.75,0.5,0 & 0.75,0.75,0\\\\
+      \\hline
+      \\hline
+      $\\zeta_i$ & 0.25 & 0.5 & 0.75 & 0.25 & 0.5 & 0.75 & 0.25 & 0.5 & 0.75\\
+      \\end{tabular}
+      \\caption{Percentage of polarized / nonpolarized results (over the 36 experiments in each cell) broken down by selective exposure ($\gamma$ and $h_G$) and fragmentation ($\epsilon$).}
+      \\label{tab:results-epsilon-gamma-hg}
+    \\end{table}
+    \\endgroup"""
+  latex_format_four_cats = latex_format
+  latex_format_two_cats = latex_format
+  for (key,val) in proportions.items():
+    if key == 'key': continue
+    polarized = val['polarized']
+    depolarized = val['depolarized']
+    remained_polarized = val['remained_polarized']
+    remained_nonpolarized = val['remained_nonpolarized']
+
+    key_pieces = key.split(',')
+    zeta_c = key_pieces[0]
+    zeta_i = key_pieces[1]
+    translate = key_pieces[2]
+
+    latex_format_four_cats = latex_format_four_cats.replace(f'{zeta_c},{zeta_i},{translate}', f'{polarized}/{depolarized}/{remained_polarized}/{remained_nonpolarized}')
+    latex_format_two_cats = latex_format_two_cats.replace(f'{zeta_c},{zeta_i},{translate}', f'{polarized+remained_polarized}/{depolarized+remained_nonpolarized}')
+
+  with open(f'{data_dir}/{filename}'.replace('.tex','_all-categories.tex'),'w') as f:
+    f.write(latex_format_four_cats)
+  with open(f'{data_dir}/{filename}'.replace('.tex','_two-categories.tex'),'w') as f:
+    f.write(latex_format_two_cats)
 
 def polarization_results_by_fragmentation_exposure(df):
   '''
