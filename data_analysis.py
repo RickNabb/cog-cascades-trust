@@ -1143,55 +1143,55 @@ def polarization_total_analysis(data_dir):
   polarization_mean_df = polarization_data['polarization_df']
   polarization_all_df = polarization_data['polarization_all_df']
 
-  print('starting polarization stability analysis...')
-  polarization_stability_data = polarization_stability_analysis(multidata, polarization_slope, polarization_intercept)
-  with open(f'{data_dir}/polarization-stability-diff-parts.json','w') as f:
-    json.dump(polarization_stability_data['diff_parts'], f)
-  print('finished polarization stability analysis')
+  # print('starting polarization stability analysis...')
+  # polarization_stability_data = polarization_stability_analysis(multidata, polarization_slope, polarization_intercept)
+  # with open(f'{data_dir}/polarization-stability-diff-parts.json','w') as f:
+  #   json.dump(polarization_stability_data['diff_parts'], f)
+  # print('finished polarization stability analysis')
 
-  stability_df = polarization_stability_data['stability']
+  # stability_df = polarization_stability_data['stability']
 
-  print('starting polarization analysis across repetitions...')
-  polarization_data_across_runs = polarization_analysis_across_repetitions(polarization_mean_df, multidata, polarization_slope, polarization_intercept)
-  with open(f'{data_dir}/polarization-across-reps-results.json','w') as f:
-    polarization_results = { category: len(polarization_data_across_runs[category]) for category in polarization_categories }
-    json.dump(polarization_results, f)
-  print('finished polarization analysis across repetitions')
+  # print('starting polarization analysis across repetitions...')
+  # polarization_data_across_runs = polarization_analysis_across_repetitions(polarization_mean_df, multidata, polarization_slope, polarization_intercept)
+  # with open(f'{data_dir}/polarization-across-reps-results.json','w') as f:
+  #   polarization_results = { category: len(polarization_data_across_runs[category]) for category in polarization_categories }
+  #   json.dump(polarization_results, f)
+  # print('finished polarization analysis across repetitions')
 
-  print('starting polarization stability analysis across repetitions...')
-  polarization_stability_data_across_runs = polarization_stability_across_repetitions(stability_df, multidata)
-  with open(f'{data_dir}/polarization-stability-across-reps-diff-parts.json','w') as f:
-    json.dump(polarization_stability_data_across_runs['diff_parts'], f)
-  print('finished polarization stability analysis across repetitions')
+  # print('starting polarization stability analysis across repetitions...')
+  # polarization_stability_data_across_runs = polarization_stability_across_repetitions(stability_df, multidata)
+  # with open(f'{data_dir}/polarization-stability-across-reps-diff-parts.json','w') as f:
+  #   json.dump(polarization_stability_data_across_runs['diff_parts'], f)
+  # print('finished polarization stability analysis across repetitions')
 
   print('polarization analyses done')
 
-  polarization_df_across_runs = polarization_data_across_runs['polarization_df']
+  # polarization_df_across_runs = polarization_data_across_runs['polarization_df']
 
-  print('starting polarization results by parameter breakdown...')
-  (fe_relative, fe_absolute) = polarization_results_by_fragmentation_exposure(polarization_mean_df)
-  with open(f'{data_dir}/polarization-by-frag-zeta-relative.json','w') as f:
-    json.dump(fe_relative, f)
-  with open(f'{data_dir}/polarization-by-frag-zeta-absolute.json','w') as f:
-    json.dump(fe_absolute, f)
-  write_polarization_by_fragmentation_exposure(fe_absolute, data_dir, 'polarization-by-frag-zeta-absolute-LATEX.tex')
-  write_polarization_by_fragmentation_exposure(fe_relative, data_dir, 'polarization-by-frag-zeta-relative-LATEX.tex')
+  # print('starting polarization results by parameter breakdown...')
+  # (fe_relative, fe_absolute) = polarization_results_by_fragmentation_exposure(polarization_mean_df)
+  # with open(f'{data_dir}/polarization-by-frag-zeta-relative.json','w') as f:
+  #   json.dump(fe_relative, f)
+  # with open(f'{data_dir}/polarization-by-frag-zeta-absolute.json','w') as f:
+  #   json.dump(fe_absolute, f)
+  # write_polarization_by_fragmentation_exposure(fe_absolute, data_dir, 'polarization-by-frag-zeta-absolute-LATEX.tex')
+  # write_polarization_by_fragmentation_exposure(fe_relative, data_dir, 'polarization-by-frag-zeta-relative-LATEX.tex')
 
-  (fe_relative_runs, fe_absolute_runs) = polarization_results_by_fragmentation_exposure(polarization_df_across_runs)
-  with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-relative.json','w') as f:
-    json.dump(fe_relative_runs, f)
-  with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-absolute.json','w') as f:
-    json.dump(fe_absolute_runs, f)
-  write_polarization_by_fragmentation_exposure(fe_absolute_runs, data_dir, 'polarization-across-reps-by-frag-zeta-absolute-LATEX.tex')
-  write_polarization_by_fragmentation_exposure(fe_relative_runs, data_dir, 'polarization-across-reps-by-frag-zeta-relative-LATEX.tex')
-  print('finished polarization results by parameter breakdown')
+  # (fe_relative_runs, fe_absolute_runs) = polarization_results_by_fragmentation_exposure(polarization_df_across_runs)
+  # with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-relative.json','w') as f:
+  #   json.dump(fe_relative_runs, f)
+  # with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-absolute.json','w') as f:
+  #   json.dump(fe_absolute_runs, f)
+  # write_polarization_by_fragmentation_exposure(fe_absolute_runs, data_dir, 'polarization-across-reps-by-frag-zeta-absolute-LATEX.tex')
+  # write_polarization_by_fragmentation_exposure(fe_relative_runs, data_dir, 'polarization-across-reps-by-frag-zeta-relative-LATEX.tex')
+  # print('finished polarization results by parameter breakdown')
 
   print('starting polarization fragmentation correlation analysis...')
   fragmentation_data = fragmentation_analysis(multidata)
   fragmentation_all_df = fragmentation_data['fragmentation_all_df']
   pol_frag_corr = correlation_polarization_fragmentation(polarization_all_df, fragmentation_all_df, multidata, f'{data_dir}/polarization-fragmentation-correlation.png')
   with open(f'{data_dir}/polarization-fragmentation-correlation.txt','w') as f:
-    f.write(pol_frag_corr)
+    f.write(str(pol_frag_corr))
   print('finished polarization fragmentation correlation analysis')
 
   print('starting polarization homophily correlation analysis...')
@@ -1199,7 +1199,7 @@ def polarization_total_analysis(data_dir):
   homophily_all_df = homophily_data['homophily_all_df']
   pol_frag_corr = correlation_polarization_homophily(polarization_all_df, homophily_all_df, multidata, f'{data_dir}/polarization-homophily-correlation.png')
   with open(f'{data_dir}/polarization-homophily-correlation.txt','w') as f:
-    f.write(pol_frag_corr)
+    f.write(str(pol_frag_corr))
   print('finished polarization homophily correlation analysis')
 
 def runs_with_unconnected_institution_graphs(graphs_path):
@@ -1691,10 +1691,12 @@ def correlation_polarization_fragmentation(polarization_df, fragmentation_df, mu
       data_to_plot[polarization_category]['x'].append(fragmentation_val)
       data_to_plot[polarization_category]['y'].append(polarization_val)
 
-
   for (category,data) in data_to_plot.items():
     plt.figure()
     plt.scatter(data['x'],data['y'], label=category, s=1)
+    x = np.array([ [x] for x in data['x'] ])
+    model = LinearRegression().fit(x, data['y'])
+    plt.plot(x, model.intercept_ + model.coef_ * x, color='red', label=rf'Regression $\alpha$={round(model.intercept_,3)}, $\beta$={round(model.coef_[0],3)}')
     plt.xlabel("Mean Fragmentation")
     plt.ylabel("Polarization")
     plt.legend()
@@ -1728,6 +1730,9 @@ def correlation_polarization_homophily(polarization_df, homophily_df, multidata,
   for (category,data) in data_to_plot.items():
     plt.figure()
     plt.scatter(data['x'],data['y'], label=category, s=1)
+    x = np.array([ [x] for x in data['x'] ])
+    model = LinearRegression().fit(x, data['y'])
+    plt.plot(x, model.intercept_ + model.coef_ * x, color='red', label=rf'Regression $\alpha$={round(model.intercept_,3)}, $\beta$={round(model.coef_[0],3)}')
     plt.xlabel("Mean Homophily")
     plt.ylabel("Polarization")
     plt.legend()
