@@ -14,6 +14,7 @@ from sklearn.linear_model import LinearRegression
 import math
 import matplotlib.pyplot as plt
 from nlogo_io import *
+from messaging import dist_to_agent_brain, believe_message
 # import statsmodels.formula.api as smf
 
 DATA_DIR = 'D:/school/grad-school/Tufts/research/cog-cascades-trust'
@@ -178,43 +179,128 @@ def process_multi_chart_data(in_path, in_filename='percent-agent-beliefs'):
 
 def process_message_data(in_path, rand_id):
   '''
+  Process message data from the simulation runs: messages heard by agents,
+  believed by agents, agent belief data over time, and messages sent by
+  institutional agents.
+
+  As of now, the analysis calculates a timeseries of the mean differences
+  between agent beliefs at each tick and the messages they hear, and believe
+  (two separate timeseries).
+
+  :param in_path: The path to a single param combo run's output
+  :param rand_id: The random seed used for filenames to process.
+
   Analysis ideas:
-  - Mean and var difference of message exposure (heard) over time
-  - Mean and var difference of message belief over time
+  [X] Mean and var difference of message exposure (heard) over time
+  [X] Mean and var difference of message belief over time
   - Change in media messaging over time (color chart over time -- maybe stack plot)
   - Do per run and then aggregate across runs with same paratmeres
   '''
-  citizen_beliefs_file = f'{in_path}/{rand_id}_bel_over_time.json'
-  messages_believed_file = f'{in_path}/{rand_id}_messages_believed.json'
-  messages_heard_file = f'{in_path}/{rand_id}_messages_heard.json'
-  messages_sent_file = f'{in_path}/{rand_id}_messages_sent.json'
+  print(f'processing message data for {in_path}/{rand_id}_FILE.json')
+  citizen_beliefs_file = open(f'{in_path}/{rand_id}_bel_over_time.json', 'r')
+  messages_believed_file = open(f'{in_path}/{rand_id}_messages_believed.json', 'r')
+  messages_heard_file = open(f'{in_path}/{rand_id}_messages_heard.json', 'r')
+  messages_sent_file = open(f'{in_path}/{rand_id}_messages_sent.json', 'r')
+
+  '''
+  Format of citizen_beliefs: [ {'tick': [{'A': 1}}, {'1': {'A': 2}] } ... where each key is a tick, and each array entry in a tick is a citizen ]
+
+  Format of messages_believed: [ [{'tick': [believed], 'tick': [believed], ...}] where each array is a citizen ]
+  '''
+
   belief_data = json.load(citizen_beliefs_file)
+  bel_data = {}
+  for tick in belief_data:
+    bel_data.update(tick)
+  belief_data = bel_data
+
+  messages_heard_data = json.load(messages_heard_file)
+  messages_heards_data = []
+  for cit in messages_heard_data:
+    messages_heard = {}
+    for entry in cit:
+      messages_heard.update(entry)
+    messages_heards_data.append(messages_heard)
+  messages_heard_data = messages_heards_data
+
   messages_bel_data = json.load(messages_believed_file)
+  messages_belief_data = []
+  for cit in messages_bel_data:
+    messages_believed = {}
+    for entry in cit:
+      messages_believed.update(entry)
+    messages_belief_data.append(messages_believed)
+  messages_bel_data = messages_belief_data
+
   messages_sent_data = json.load(messages_sent_file)
+  all_messages = { }
+  for media_messages in messages_sent_data:
+    all_messages.update(media_messages)
+
+  citizen_beliefs_file.close()
+  messages_believed_file.close()
+  messages_heard_file.close()
+  messages_sent_file.close()
+
   ticks = len(belief_data)
   belief_diffs = []
-  # TODO: Write the code to fill this in
   heard_diffs = []
   for tick in range(ticks):
     belief_diffs_at_tick = np.array([])
     heard_diffs_at_tick = np.array([])
-    belief_data_for_tick = belief_data[tick]
-    heard_data_for_tick = heard_data[tick]
-    for agent_data in belief_data_for_tick:
-      agent_id = list(agent_data.keys())[0]
-      agent_belief_at_tick = belief_file[tick][int(agent_id)]
-      messages_believed = agent_data[agent_id]
+    # print(belief_data[tick])
+    belief_data_for_tick = belief_data[str(tick)]
+    # heard_data_for_tick = messages_heard_data[tick]
+    for cit_id in range(len(belief_data_for_tick)):
+      agent_brain = belief_data_for_tick[cit_id]
+      agent_malleables = [ bel for bel in agent_brain.keys() ]
+      agent_brain['malleable'] = agent_malleables
+      messages_believed = []
+      messages_heard = []
+      
+      if str(tick) in messages_bel_data[cit_id].keys():
+        messages_believed = messages_bel_data[cit_id][str(tick)]
+      if str(tick) in messages_heard_data[cit_id].keys():
+        messages_heard = messages_heard_data[cit_id][str(tick)]
 
-      cur_agent_belief = agent_belief_at_tick
-      for message_id in messages_believed:
-        message = messages_sent_data[tick][message_id]
-        diff = dist_to_agent_brain(agent_belief_at_tick,message) 
-        belief_diffs_at_tick.append(diff)
-        # TODO: In reality, this should replace whatever proposition was
-        # believed, but since we are only modeling one for now, this suffices
-        curr_agent_belief = message
+      cur_agent_belief = agent_brain
+      for message_id in sorted(messages_believed + messages_heard):
+        message = all_messages[f'{message_id}']
+        diff = dist_to_agent_brain(cur_agent_belief,message) 
+        if message_id in messages_heard:
+          heard_diffs_at_tick = np.append(heard_diffs_at_tick, diff)
+        if message_id in messages_believed:
+          belief_diffs_at_tick = np.append(belief_diffs_at_tick, diff)
+          # TODO: In reality, this should replace whatever proposition was
+          # believed, but since we are only modeling one for now, this suffices
+          cur_agent_belief = believe_message(agent_brain, message, '', 'discrete')
     belief_diffs.append((belief_diffs_at_tick.mean(), belief_diffs_at_tick.var()))
+    heard_diffs.append((heard_diffs_at_tick.mean(), heard_diffs_at_tick.var()))
+  return (belief_diffs, heard_diffs)
 
+def process_multi_message_data(in_path):
+  '''
+  Aggregate all the message-related data analysis for a given experiment
+  output path.
+
+  :param in_path: The directory path to a given experiment directory
+  containing messaging data files.
+  '''
+  proxy_filename = 'world.csv'
+  file_ids = []
+  message_multi_data = []
+  if os.path.isdir(in_path):
+    for file in os.listdir(in_path):
+      if proxy_filename in file:
+        file_ids.append(file.replace('_world.csv',''))
+
+    for file_id in file_ids:
+      data = process_message_data(in_path, file_id)
+      message_multi_data.append(data)
+    return message_multi_data
+  else:
+    print(f'ERROR: Path not found {in_path}')
+    return -1
 
 '''
 Given some multi-chart data, plot it and save the plot.
@@ -808,13 +894,21 @@ def process_exp_outputs(param_combos, plots, path):
       if multi_data != -1:
         plot_multi_chart_data(plot_types, multi_data, props, f'{path}/results', f'{"-".join(combo)}_{plot_name}-agg-chart')
 
-def get_all_multidata(param_combos, plots, path):
+def get_all_message_multidata(param_combos, path):
   combos = []
   for combo in itertools.product(*param_combos):
     combos.append(combo)
 
-  if not os.path.isdir(f'{path}/results'):
-    os.mkdir(f'{path}/results')
+  multi_datas = {}
+  for combo in combos:
+    multi_message_data = process_multi_message_data(f'{path}/{"/".join(combo)}')
+    multi_datas[combo] = multi_message_data
+  return multi_datas
+
+def get_all_multidata(param_combos, plots, path):
+  combos = []
+  for combo in itertools.product(*param_combos):
+    combos.append(combo)
 
   multi_datas = {}
   for combo in combos:
@@ -892,14 +986,19 @@ def process_parameter_sweep_test_exp(path):
   ba_m = ['3']
   graph_type = ['barabasi-albert']
   repetition = list(map(str, range(2)))
-  process_exp_outputs(
+  # process_exp_outputs(
+  #   [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,repetition],
+  #   {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
+  #   # 'polarization': [PLOT_TYPES.LINE]},
+  #   'polarization': [PLOT_TYPES.LINE],
+  #   'fragmentation': [PLOT_TYPES.LINE],
+  #   'homophily': [PLOT_TYPES.LINE]},
+  #   path)
+  message_multidata = get_all_message_multidata(
     [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,repetition],
-    {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
-    # 'polarization': [PLOT_TYPES.LINE]},
-    'polarization': [PLOT_TYPES.LINE],
-    'fragmentation': [PLOT_TYPES.LINE],
-    'homophily': [PLOT_TYPES.LINE]},
-    path)
+    path
+  )
+  return message_multidata
 
 def process_parameter_sweep_tinytest_exp(path):
   cognitive_translate = ['0', '1', '2']
@@ -920,7 +1019,6 @@ def process_parameter_sweep_tinytest_exp(path):
     # 'homophily': [PLOT_TYPES.LINE]},
     path)
 
-
 def get_low_res_sweep_multidata(path):
   cognitive_translate = ['0', '1', '2']
   institution_tactic = ['broadcast-brain', 'appeal-mean']
@@ -932,13 +1030,14 @@ def get_low_res_sweep_multidata(path):
   citizen_memory_length = ['5']
   repetition = list(map(str, range(5)))
 
-  return get_all_multidata(
+  measure_multidata = get_all_multidata(
     [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_cit,zeta_media,citizen_memory_length,repetition],
     {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
     'polarization': [PLOT_TYPES.LINE],
     'fragmentation': [PLOT_TYPES.LINE],
     'homophily': [PLOT_TYPES.LINE]},
     path)
+  return measure_multidata
 
 '''
 ================
