@@ -271,12 +271,10 @@ def process_message_data(in_path, rand_id):
           heard_diffs_at_tick = np.append(heard_diffs_at_tick, diff)
         if message_id in messages_believed:
           belief_diffs_at_tick = np.append(belief_diffs_at_tick, diff)
-          # TODO: In reality, this should replace whatever proposition was
-          # believed, but since we are only modeling one for now, this suffices
           cur_agent_belief = believe_message(agent_brain, message, '', 'discrete')
     belief_diffs.append((belief_diffs_at_tick.mean(), belief_diffs_at_tick.var()))
     heard_diffs.append((heard_diffs_at_tick.mean(), heard_diffs_at_tick.var()))
-  return (belief_diffs, heard_diffs)
+  return { 'believed': np.array(belief_diffs), 'heard': np.array(heard_diffs) }
 
 def process_multi_message_data(in_path):
   '''
@@ -301,6 +299,53 @@ def process_multi_message_data(in_path):
   else:
     print(f'ERROR: Path not found {in_path}')
     return -1
+
+def plot_multi_message_data(multi_data_entry, out_path, show_plot=False):
+  line_color = lambda key: '#000000'
+
+  multi_data_has_multiple = lambda multi_data_entry: type(multi_data_entry[0]) == type(np.array(0)) and len(multi_data_entry) > 1
+
+  measures = ['believed','heard']
+  param_combo = multi_data_entry[0]
+  multi_data = multi_data_entry[1]
+
+  # The case where a path was not found
+  if multi_data == -1:
+    print(f'ERROR: No data for entry {param_combo}')
+    return
+
+  for measure in measures:
+    # Check to make sure data can be stacked
+    data_lengths = []
+    for repetition in multi_data:
+      data_lengths.append(len(repetition[measure]))
+    if len(set(data_lengths)) > 1:
+      print(f'ERROR: Data lengths unequal between repetitions for param combo {param_combo} measure {measure}: {data_lengths}')
+      continue
+
+    fig, (ax) = plt.subplots(1, figsize=(8,6))
+    y_min = 0
+    y_max = 6
+    x_min = 0
+    x_max = len(multi_data[0]['believed'])
+    ax.set_ylim([y_min, y_max])
+    plt.yticks(np.arange(y_min, y_max, step=1))
+    plt.xticks(np.arange(x_min, x_max*1.1, step=5))
+    ax.set_ylabel("Mean distance")
+    ax.set_xlabel("Time step")
+
+    mean_vec = np.array([ [ val[0] for val in repetition[measure] ] for repetition in multi_data ])
+    mean_vec = mean_vec.mean(0) if multi_data_has_multiple(multi_data) else mean_vec[0]
+
+    var_vec = np.array([ [ val[1] for val in repetition[measure] ] for repetition in multi_data ])
+    var_vec = var_vec.var(0) if multi_data_has_multiple(multi_data) else var_vec[0]
+
+    ax.plot(mean_vec, c=line_color(param_combo))
+    ax.fill_between(range(x_min, len(mean_vec)), mean_vec-var_vec, mean_vec+var_vec, facecolor=f'{line_color(param_combo)}44')
+
+    plt.savefig(f'{out_path}/{"-".join(param_combo)}_messages_{measure}_dist.png')
+    if show_plot: plt.show()
+    plt.close()
 
 '''
 Given some multi-chart data, plot it and save the plot.
@@ -905,6 +950,18 @@ def get_all_message_multidata(param_combos, path):
     multi_datas[combo] = multi_message_data
   return multi_datas
 
+def process_all_message_multidata(param_combos, path):
+  combos = []
+  for combo in itertools.product(*param_combos):
+    combos.append(combo)
+
+  multi_datas = {}
+  for combo in combos:
+    multi_message_data = process_multi_message_data(f'{path}/{"/".join(combo)}')
+    plot_multi_message_data((combo, multi_message_data), f'{path}/results', False)
+    multi_datas[combo] = multi_message_data
+  return multi_datas
+
 def get_all_multidata(param_combos, plots, path):
   combos = []
   for combo in itertools.product(*param_combos):
@@ -974,6 +1031,24 @@ def process_low_res_param_sweep_exp(path):
     'homophily': [PLOT_TYPES.LINE]},
     path)
 
+def process_parameter_sweep_test_exp_messages(path):
+  # Note: This is a small parameter sapce to save processing
+  # time for testing
+  cognitive_translate = ['0']
+  institution_tactic = ['broadcast-brain']
+  media_ecosystem_n = ['20']
+  media_ecosystem_dist = [ 'uniform', 'normal']
+  init_cit_dist = ['normal', 'uniform']
+  zeta_media = ['0.25','0.5','0.75']
+  zeta_cit = ['0.25','0.5','0.75']
+  citizen_memory_length = ['5']
+  repetition = list(map(str, range(2)))
+  message_multidata = process_all_message_multidata(
+    [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,repetition],
+    path
+  )
+  return message_multidata
+
 def process_parameter_sweep_test_exp(path):
   cognitive_translate = ['0', '1']
   institution_tactic = ['broadcast-brain', 'appeal-mean']
@@ -986,14 +1061,14 @@ def process_parameter_sweep_test_exp(path):
   ba_m = ['3']
   graph_type = ['barabasi-albert']
   repetition = list(map(str, range(2)))
-  # process_exp_outputs(
-  #   [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,repetition],
-  #   {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
-  #   # 'polarization': [PLOT_TYPES.LINE]},
-  #   'polarization': [PLOT_TYPES.LINE],
-  #   'fragmentation': [PLOT_TYPES.LINE],
-  #   'homophily': [PLOT_TYPES.LINE]},
-  #   path)
+  process_exp_outputs(
+    [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,repetition],
+    {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
+    # 'polarization': [PLOT_TYPES.LINE]},
+    'polarization': [PLOT_TYPES.LINE],
+    'fragmentation': [PLOT_TYPES.LINE],
+    'homophily': [PLOT_TYPES.LINE]},
+    path)
   message_multidata = get_all_message_multidata(
     [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_media,zeta_cit,citizen_memory_length,repetition],
     path
