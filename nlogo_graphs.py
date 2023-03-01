@@ -15,6 +15,7 @@ from random import random
 from functools import reduce
 from enums import INSTITUTION_ECOSYSTEM_TYPES, eco_file_names
 from utils import curr_sigmoid_p, sigmoid_contagion_p, normal_dist, normal_dist_multiple
+import json
 
 """
 BELIEF ATTRIBUTES
