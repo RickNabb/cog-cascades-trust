@@ -1389,47 +1389,82 @@ def polarization_results_by_fragmentation_exposure(df):
   absolute_proportions['key'] = 'zeta_cit,zeta_media,translate'
   return (relative_proportions, absolute_proportions)
 
-def polarization_results_by_broadcast_distributions(polarization_data):
+def polarization_results_by_tactic_distributions(df):
   '''
   Run an analysis to see how many results polarized vs nonpolarized for
   parameter gamma (translate), citizen distribution and institution
   distribution.
-
-  This analysis supports Table 5 in Rabb & Cowen 2022.
   
   :param polarization_data: The result of polarization_analysis(multidata)
   This contains 2 key dataframes -- one for polarizing results, one for
   nonpolarizing ones
   '''
-  polarizing = polarization_data['polarizing']
-  nonpolarizing = polarization_data['nonpolarizing']
-  polarizing['polarized'] = 1
-  nonpolarizing['polarized'] = 0
-  all_results = polarizing.append(nonpolarizing)
-
-  dfs = {
-    "translate_0": all_results.query("translate=='0' and tactic=='broadcast-brain'"),
-    "translate_1": all_results.query("translate=='1' and tactic=='broadcast-brain'"),
-    "translate_2": all_results.query("translate=='2' and tactic=='broadcast-brain'"),
-  }
-
+  tactics = ['broadcast','appeal-mean']
   dist_values = ['uniform','normal','polarized']
-  proportions = {}
-  for (df_name, df) in dfs.items():
-    print(f'{df_name}\n==========')
+  relative_proportions = {}
+  absolute_proportions = {}
+  for tactic in tactics:
     for cit_dist in dist_values:
-      for inst_dist in dist_values:
-        partition_polarized = df.query(f'citizen_dist=="{cit_dist}" and media_dist=="{inst_dist}" and polarized==1')
-        partition_nonpolarized = df.query(f'citizen_dist=="{cit_dist}" and media_dist=="{inst_dist}" and polarized==0')
-        partition_all = df.query(f'citizen_dist=="{cit_dist}" and media_dist=="{inst_dist}"')
+      for media_dist in dist_values:
+        partition_polarized = df.query(f'tactic=={tactic} and citizen_dist=={cit_dist} and media_dist=={media_dist} and category=="polarized"')
+        partition_depolarized = df.query(f'tactic=={tactic} and citizen_dist=={cit_dist} and media_dist=={media_dist} and category=="depolarized"')
+        partition_remained_polarized = df.query(f'tactic=={tactic} and citizen_dist=={cit_dist} and media_dist=={media_dist} and category=="remained_polarized"')
+        partition_remained_nonpolarized = df.query(f'tactic=={tactic} and citizen_dist=={cit_dist} and media_dist=={media_dist} and category=="remained_nonpolarized"')
+
+        partition_all = df.query(f'tactic=={tactic} and citizen_dist=={cit_dist} and media_dist=={media_dist}')
+        if len(partition_all) == 0:
+          partition_all = pd.DataFrame({'empty': [1]})
 
         # Use this line to report percent of results that are polarized
-        proportions[(cit_dist,inst_dist)] = {'polarized': len(partition_polarized) / len(partition_all), 'nonpolarized': len(partition_nonpolarized) / len(partition_all) }
+        relative_proportions[f'{tactic},{cit_dist},{media_dist}'] = {'polarized': len(partition_polarized) / len(partition_all), 'depolarized': len(partition_depolarized) / len(partition_all), 'remained_polarized': len(partition_remained_polarized) / len(partition_all), 'remained_nonpolarized': len(partition_remained_nonpolarized) / len(partition_all) }
 
         # Use this line to report number of results that are polarized
-        # proportions[(cit_dist,inst_dist)] = {'polarized': len(partition_polarized), 'nonpolarized': len(partition_nonpolarized) }
+        absolute_proportions[f'{tactic},{cit_dist},{media_dist}'] = {'polarized': len(partition_polarized) , 'depolarized': len(partition_depolarized) , 'remained_polarized': len(partition_remained_polarized) , 'remained_nonpolarized': len(partition_remained_nonpolarized), 'total': len(partition_all) }
+  relative_proportions['key'] = 'tactic,citizen_dist,media_dist'
+  absolute_proportions['key'] = 'tactic,citizen_dist,media_dist'
+  return (relative_proportions, absolute_proportions)
 
-    print(proportions)
+def write_polarization_by_tactic_distribution(proportions, data_dir, filename):
+  latex_format = """\\begingroup
+    \\setlength{\\tabcolsep}{6pt}
+    \\renewcommand{\\arraystretch}{1.5}
+    \\begin{table}[]
+      \\centering
+      \\begin{tabular}{c||c|c|c||c|c|c||c|c|c}
+      $\\mathcal{I}$ &\\multicolumn{3}{c||}{\\mathcal{U}}&\\multicolumn{3}{c||}{\\mathcal{N}}&\\multicolumn{3}{c}{\\mathcal{P}}\\\\
+      \\hline
+      \\hline
+      $\\varphi=broadcast$ & broadcast,uniform,uniform & broadcast,uniform,normal & broadcast,uniform,polarized & broadcast,normal,uniform & broadcast,normal,normal & broadcast,normal,polarized & broadcast,polarized,uniform & broadcast,polarized,normal & broadcast,polarized,polarized \\\\
+      \\hline
+      $\\varphi=appeal-mean$ & appeal-mean,uniform,uniform & appeal-mean,uniform,normal & appeal-mean,uniform,polarized & appeal-mean,normal,uniform & appeal-mean,normal,normal & appeal-mean,normal,polarized & appeal-mean,polarized,uniform & appeal-mean,polarized,normal & appeal-mean,polarized,polarized \\\\
+      \\hline
+      $\\mathcal{C}& \\mathcal{U} & \\mathcal{N} & \\mathcal{P} & \\mathcal{U} & \\mathcal{N} & \\mathcal{P} &\\mathcal{U} & \\mathcal{N} & \\mathcal{P}\\
+      \\end{tabular}
+      \\caption{Percentage of polarized / depolarized / remained polarized / remained nonpolarized results broken down by media tactic ($\\varphi$) and initial belief distributions ($\\mathcal{C}$ and $\\mathcal{I}$).}
+      \\label{tab:results-tactic-distribution}
+    \\end{table}
+    \\endgroup"""
+  latex_format_four_cats = latex_format
+  latex_format_two_cats = latex_format
+  for (key,val) in proportions.items():
+    if key == 'key': continue
+    polarized = val['polarized']
+    depolarized = val['depolarized']
+    remained_polarized = val['remained_polarized']
+    remained_nonpolarized = val['remained_nonpolarized']
+
+    key_pieces = key.split(',')
+    tactic = key_pieces[0]
+    cit_dist = key_pieces[1]
+    media_dist = key_pieces[2]
+
+    latex_format_four_cats = latex_format_four_cats.replace(f'{tactic},{cit_dist},{media_dist}', f'{polarized}/{depolarized}/{remained_polarized}/{remained_nonpolarized}')
+    latex_format_two_cats = latex_format_two_cats.replace(f'{tactic},{cit_dist},{media_dist}', f'{polarized+remained_polarized}/{depolarized+remained_nonpolarized}')
+
+  with open(f'{data_dir}/{filename}'.replace('.tex','_all-categories.tex'),'w') as f:
+    f.write(latex_format_four_cats)
+  with open(f'{data_dir}/{filename}'.replace('.tex','_two-categories.tex'),'w') as f:
+    f.write(latex_format_two_cats)
  
 def polarization_stability_analysis(multidata, slope_threshold, intercept_threshold):
   '''
