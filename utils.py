@@ -91,3 +91,7 @@ def normal_dist(maxx, mean, sigma, n):
   # sigma=mean/3
   dist = truncnorm((lower - mean) / sigma, (upper - mean) / sigma, loc=mean, scale=sigma)
   return np.array(list(map(lambda el: round(el), dist.rvs(n))))
+
+def list_subtract(l1, l2):
+  return [ el for el in l1 if el not in l2 ]
+  

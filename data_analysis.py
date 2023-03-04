@@ -962,7 +962,7 @@ def process_all_message_multidata(param_combos, path):
     multi_datas[combo] = multi_message_data
   return multi_datas
 
-def get_all_multidata(param_combos, plots, path):
+def get_all_multidata(param_combos, params, plots, path):
   combos = []
   for combo in itertools.product(*param_combos):
     combos.append(combo)
@@ -973,11 +973,14 @@ def get_all_multidata(param_combos, plots, path):
       # print(plot_name, plot_types)
       (multi_data, props, model_params) = process_multi_chart_data(f'{path}/{"/".join(combo)}', plot_name)
       multi_datas[(combo,plot_name)] = multi_data
+      multi_datas['params'] = params
   return multi_datas
 
 def multidata_as_dataframe(multidata, columns):
   df = pd.DataFrame(columns=(columns+['measure','pen_name','run','data']))
   for (param_measure,data) in multidata.items():
+    if param_measure == 'params':
+      continue
     param_combo = param_measure[0]
     measure = param_measure[1]
     for (pen_name,runs_data) in data.items():
@@ -1106,6 +1109,7 @@ def get_low_res_sweep_multidata(path):
 
   measure_multidata = get_all_multidata(
     [cognitive_translate,institution_tactic,media_ecosystem_dist,media_ecosystem_n,init_cit_dist,zeta_cit,zeta_media,citizen_memory_length,repetition],
+    ['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition'],
     {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
     'polarization': [PLOT_TYPES.LINE],
     'fragmentation': [PLOT_TYPES.LINE],
@@ -1119,12 +1123,13 @@ ANALYSES OF RESULTS
 ================
 '''
 
-def polarization_total_analysis(data_dir):
+def param_sweep_low_res_total_analysis(data_dir):
   print('loading polarization data...')
   df = read_polarization_dataframe(f'{data_dir}/low-res-sweep-all.csv')
-  df_no_disconnected = df[(df['zeta_media'] != 1) & (df['zeta_citizen'] != 1) & ((df['zeta_media'] != 0.75) | (df['translate'] != 0))]
+  df_no_disconnected = df[(df['zeta_media'] != 1) & (df['zeta_citizen'] != 1) & ((df['zeta_media'] != 0.75) | (df['translate'] != 0)) & ((df['zeta_citizen'] != 0.75) | (df['translate'] != 0))]
   df_no_disconnected = df_no_disconnected.drop(columns=['Unnamed: 0'])
   multidata = dataframe_as_multidata(df_no_disconnected)
+  multidata['params'] = ['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition']
   print('loaded polarization data')
 
   print('starting polarization analysis...')
@@ -1139,69 +1144,73 @@ def polarization_total_analysis(data_dir):
     json.dump(polarization_results, f)
   print('finished polarization analysis')
  
-  # polarization_mean_df = polarization_data['polarization_df']
+  polarization_mean_df = polarization_data['polarization_df']
   polarization_all_df = polarization_data['polarization_all_df']
 
-  # print('starting polarization stability analysis...')
-  # polarization_stability_data = polarization_stability_analysis(multidata, polarization_slope, polarization_intercept)
-  # with open(f'{data_dir}/polarization-stability-diff-parts.json','w') as f:
-  #   json.dump(polarization_stability_data['diff_parts'], f)
-  # print('finished polarization stability analysis')
+  print('starting polarization stability analysis...')
+  polarization_stability_data = polarization_stability_analysis(multidata, polarization_slope, polarization_intercept)
+  with open(f'{data_dir}/polarization-stability-diff-parts.json','w') as f:
+    json.dump(polarization_stability_data['diff_parts'], f)
+  print('finished polarization stability analysis')
 
-  # stability_df = polarization_stability_data['stability']
+  stability_df = polarization_stability_data['stability']
 
-  # print('starting polarization analysis across repetitions...')
-  # polarization_data_across_runs = polarization_analysis_across_repetitions(polarization_mean_df, multidata, polarization_slope, polarization_intercept)
-  # with open(f'{data_dir}/polarization-across-reps-results.json','w') as f:
-  #   polarization_results = { category: len(polarization_data_across_runs[category]) for category in polarization_categories }
-  #   json.dump(polarization_results, f)
-  # print('finished polarization analysis across repetitions')
+  print('starting polarization analysis across repetitions...')
+  polarization_data_across_runs = polarization_analysis_across_repetitions(polarization_mean_df, multidata, polarization_slope, polarization_intercept)
+  with open(f'{data_dir}/polarization-across-reps-results.json','w') as f:
+    polarization_results = { category: len(polarization_data_across_runs[category]) for category in polarization_categories }
+    json.dump(polarization_results, f)
+  print('finished polarization analysis across repetitions')
 
-  # print('starting polarization stability analysis across repetitions...')
-  # polarization_stability_data_across_runs = polarization_stability_across_repetitions(stability_df, multidata)
-  # with open(f'{data_dir}/polarization-stability-across-reps-diff-parts.json','w') as f:
-  #   json.dump(polarization_stability_data_across_runs['diff_parts'], f)
-  # print('finished polarization stability analysis across repetitions')
+  print('starting polarization stability analysis across repetitions...')
+  polarization_stability_data_across_runs = polarization_stability_across_repetitions(stability_df, multidata)
+  with open(f'{data_dir}/polarization-stability-across-reps-diff-parts.json','w') as f:
+    json.dump(polarization_stability_data_across_runs['diff_parts'], f)
+  print('finished polarization stability analysis across repetitions')
 
   print('polarization analyses done')
 
-  # polarization_df_across_runs = polarization_data_across_runs['polarization_df']
+  polarization_df_across_runs = polarization_data_across_runs['polarization_df']
 
-  # print('starting polarization results by parameter breakdown...')
-  # (fe_relative, fe_absolute) = polarization_results_by_fragmentation_exposure(polarization_all_df)
-  # with open(f'{data_dir}/polarization-by-frag-zeta-relative.json','w') as f:
-  #   json.dump(fe_relative, f)
-  # with open(f'{data_dir}/polarization-by-frag-zeta-absolute.json','w') as f:
-  #   json.dump(fe_absolute, f)
-  # write_polarization_by_fragmentation_exposure(fe_absolute, data_dir, 'polarization-by-frag-zeta-absolute-LATEX.tex')
-  # write_polarization_by_fragmentation_exposure(fe_relative, data_dir, 'polarization-by-frag-zeta-relative-LATEX.tex')
+  print('starting polarization results by parameter breakdown...')
+  (fe_relative, fe_absolute) = polarization_results_by_fragmentation_exposure(polarization_all_df)
+  with open(f'{data_dir}/polarization-by-frag-zeta-relative.json','w') as f:
+    json.dump(fe_relative, f)
+  with open(f'{data_dir}/polarization-by-frag-zeta-absolute.json','w') as f:
+    json.dump(fe_absolute, f)
+  write_polarization_by_fragmentation_exposure(fe_absolute, data_dir, 'polarization-by-frag-zeta-absolute-LATEX.tex')
+  write_polarization_by_fragmentation_exposure(fe_relative, data_dir, 'polarization-by-frag-zeta-relative-LATEX.tex')
 
-  # (fe_relative_runs, fe_absolute_runs) = polarization_results_by_fragmentation_exposure(polarization_df_across_runs)
-  # with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-relative.json','w') as f:
-  #   json.dump(fe_relative_runs, f)
-  # with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-absolute.json','w') as f:
-  #   json.dump(fe_absolute_runs, f)
-  # write_polarization_by_fragmentation_exposure(fe_absolute_runs, data_dir, 'polarization-across-reps-by-frag-zeta-absolute-LATEX.tex')
-  # write_polarization_by_fragmentation_exposure(fe_relative_runs, data_dir, 'polarization-across-reps-by-frag-zeta-relative-LATEX.tex')
-  # print('finished polarization results by parameter breakdown')
+  (fe_relative_runs, fe_absolute_runs) = polarization_results_by_fragmentation_exposure(polarization_df_across_runs)
+  with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-relative.json','w') as f:
+    json.dump(fe_relative_runs, f)
+  with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-absolute.json','w') as f:
+    json.dump(fe_absolute_runs, f)
+  write_polarization_by_fragmentation_exposure(fe_absolute_runs, data_dir, 'polarization-across-reps-by-frag-zeta-absolute-LATEX.tex')
+  write_polarization_by_fragmentation_exposure(fe_relative_runs, data_dir, 'polarization-across-reps-by-frag-zeta-relative-LATEX.tex')
+  print('finished polarization results by parameter breakdown')
 
-  print('starting polarization fragmentation correlation analysis...')
+  print('starting polarization correlation analysis...')
   fragmentation_data = fragmentation_analysis(multidata)
   fragmentation_all_df = fragmentation_data['fragmentation_all_df']
+  print('fragmentation data gathered')
+  homophily_data = homophily_analysis(multidata)
+  homophily_all_df = homophily_data['homophily_all_df']
+  print('homophily data gathered')
+  correlation_df = correlation_polarization_fragmentation_homophily_all(polarization_all_df, fragmentation_all_df, homophily_all_df, multidata)
+  correlation_df.to_csv(f'{data_dir}/correlation-pol-frag-homo-all.csv')
+  polarized_correlations = correlation_values_for_polarized(polarization_all_df, correlation_df)
+  polarized_correlations.to_csv(f'{data_dir}/polarized-correlation-pol-frag-homo-all.csv')
   # pol_frag_corr = correlation_polarization_fragmentation_means(polarization_all_df, fragmentation_all_df, multidata, f'{data_dir}/polarization-fragmentation-correlation.png')
   # with open(f'{data_dir}/polarization-fragmentation-correlation.txt','w') as f:
   #   f.write(str(pol_frag_corr))
-  print('finished polarization fragmentation correlation analysis')
+  print('finished polarization correlation analysis')
 
-  print('starting polarization homophily correlation analysis...')
-  homophily_data = homophily_analysis(multidata)
-  homophily_all_df = homophily_data['homophily_all_df']
   # pol_frag_corr = correlation_polarization_homophily_means(polarization_all_df, homophily_all_df, multidata, f'{data_dir}/polarization-homophily-correlation.png')
   # with open(f'{data_dir}/polarization-homophily-correlation.txt','w') as f:
   #   f.write(str(pol_frag_corr))
-  print('finished polarization homophily correlation analysis')
 
-  return (polarization_all_df, fragmentation_all_df, homophily_all_df)
+  return (polarization_all_df, fragmentation_all_df, homophily_all_df, correlation_df)
 
 def runs_with_unconnected_institution_graphs(graphs_path):
   '''
@@ -1487,7 +1496,7 @@ def polarization_stability_analysis(multidata, slope_threshold, intercept_thresh
   # intercept = 6.25
   # slope_threshold = 0.01
   # intercept_threshold = 8.5
-  stability_df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','category','polarized','depolarized','remained_polarized','remained_nonpolarized','ratio_match'])
+  stability_df = pd.DataFrame(columns=multidata['params'] + ['category','polarized','depolarized','remained_polarized','remained_nonpolarized','ratio_match'])
 
   polarization_data = { key: value for (key,value) in multidata.items() if key[1] == 'polarization' }
   polarization_means = { key: value['0'].mean(0) for (key,value) in polarization_data.items() }
@@ -1553,13 +1562,21 @@ def polarization_stability_across_repetitions(stability_df, multidata):
   :param multidata: The original multidata from the experiment.
   '''
   polarization_data = { key: value for (key,value) in multidata.items() if key[1] == 'polarization' }
-  stability_df_over_runs = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','category','polarized','depolarized','remained_polarized','remained_nonpolarized','ratio_match'])
+  params_minus_repetition = list_subtract(multidata['params'],['repetition'])
+  stability_df_over_runs = pd.DataFrame(columns=params_minus_repetition + ['category','polarized','depolarized','remained_polarized','remained_nonpolarized','ratio_match'])
   polarization_data_across_repetitions = {}
   for key in polarization_data.keys():
     param_combo = key[0]
     combo_without_run = key[0][0:-1]
     if combo_without_run not in polarization_data_across_repetitions:
-      polarization_data_across_repetitions[combo_without_run] = stability_df.query(f'translate=={param_combo[0]} and tactic=="{param_combo[1]}" and media_dist=="{param_combo[2]}" and citizen_dist=="{param_combo[4]}" and zeta_citizen=={param_combo[5]} and zeta_media=={param_combo[6]}')
+      query = ''
+      for i in range(len(params_minus_repetition)):
+        param = params_minus_repetition[i]
+        val = param_combo[i]
+        str_val = f'"{val}"'
+        query += f"{param}=={val if type(val) != str else str_val} and "
+      query = query[:-5]
+      polarization_data_across_repetitions[combo_without_run] = stability_df.query(query)
       across_repetitions = polarization_data_across_repetitions[combo_without_run] 
       polarizing = across_repetitions['polarized'].sum() / len(across_repetitions)
       depolarizing = across_repetitions['depolarized'].sum() / len(across_repetitions)
@@ -1576,14 +1593,22 @@ def polarization_stability_across_repetitions(stability_df, multidata):
 def polarization_analysis_across_repetitions(polarization_df, multidata, slope_threshold, intercept_threshold):
   polarization_data = { key: value for (key,value) in multidata.items() if key[1] == 'polarization' }
   x = np.array([[val] for val in range(len(list(polarization_data.values())[0]['0'][0]))])
-  df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','category','lr-intercept','lr-slope','var','start','end','delta','max','data'])
+  params_minus_repetition = list_subtract(multidata['params'],['repetition'])
+  df = pd.DataFrame(columns=params_minus_repetition + ['category','lr-intercept','lr-slope','var','start','end','delta','max','data'])
 
   polarization_data_across_repetitions = {}
   for key in polarization_data.keys():
     param_combo = key[0]
     combo_without_run = key[0][0:-1]
     if combo_without_run not in polarization_data_across_repetitions:
-      query = f'translate=={param_combo[0]} and tactic=="{param_combo[1]}" and media_dist=="{param_combo[2]}" and citizen_dist=="{param_combo[4]}" and zeta_citizen=={param_combo[5]} and zeta_media=={param_combo[6]}'
+      query = ''
+      for i in range(len(params_minus_repetition)):
+        param = params_minus_repetition[i]
+        val = param_combo[i]
+        str_val = f'"{val}"'
+        query += f"{param}=={val if type(val) != str else str_val} and "
+      query = query[:-5]
+      # query = f'translate=={param_combo[0]} and tactic=="{param_combo[1]}" and media_dist=="{param_combo[2]}" and citizen_dist=="{param_combo[4]}" and zeta_citizen=={param_combo[5]} and zeta_media=={param_combo[6]}'
       polarization_data_across_repetitions[combo_without_run] = polarization_df.query(query)
       across_runs = polarization_data_across_repetitions[combo_without_run]
       data = across_runs['data'].mean()
@@ -1633,8 +1658,8 @@ def polarization_analysis(multidata,slope_threshold,intercept_threshold):
   polarization_means = { key: value['0'].mean(0) for (key,value) in polarization_data.items() }
   polarization_vars = { key: value['0'].var(0).mean() for (key,value) in polarization_data.items() }
   x = np.array([[val] for val in range(len(list(polarization_means.values())[0]))])
-  df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','category','lr-intercept','lr-slope','var','start','end','delta','max','data'])
-  all_df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','run','category','lr-intercept','lr-slope','start','end','delta','max','data'])
+  df = pd.DataFrame(columns=multidata['params'] + ['category','lr-intercept','lr-slope','var','start','end','delta','max','data'])
+  all_df = pd.DataFrame(columns=multidata['params'] + ['run','category','lr-intercept','lr-slope','start','end','delta','max','data'])
 
   for (props, data) in polarization_data.items():
     for i in range(len(data['0'])):
@@ -1679,8 +1704,8 @@ def fragmentation_analysis(multidata):
   fragmentation_data = { key: value for (key,value) in multidata.items() if key[1] == 'fragmentation' }
   fragmentation_means = { key: value['default'].mean(0) for (key,value) in fragmentation_data.items() }
   fragmentation_vars = { key: value['default'].var(0).mean() for (key,value) in fragmentation_data.items() }
-  mean_df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','var','start','end','delta','max','data'])
-  all_df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','run','start','end','delta','max','data'])
+  mean_df = pd.DataFrame(columns=multidata['params'] + ['var','start','end','delta','max','data'])
+  all_df = pd.DataFrame(columns=multidata['params'] + ['run','start','end','delta','max','data'])
 
   for (props, data) in fragmentation_means.items():
     mean_df.loc[len(mean_df.index)] = list(props[0]) + [fragmentation_vars[props],data[0],data[-1],data[-1]-data[0],max(data),data]
@@ -1696,8 +1721,8 @@ def homophily_analysis(multidata):
   homophily_data = { key: value for (key,value) in multidata.items() if key[1] == 'homophily' }
   homophily_means = { key: value['default'].mean(0) for (key,value) in homophily_data.items() }
   homophily_vars = { key: value['default'].var(0).mean() for (key,value) in homophily_data.items() }
-  mean_df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','var','start','end','delta','max','data'])
-  all_df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','run','start','end','delta','max','data'])
+  mean_df = pd.DataFrame(columns=multidata['params'] + ['var','start','end','delta','max','data'])
+  all_df = pd.DataFrame(columns=multidata['params'] + ['run','start','end','delta','max','data'])
 
   for (props, data) in homophily_means.items():
     mean_df.loc[len(mean_df.index)] = list(props[0]) + [homophily_vars[props],data[0],data[-1],data[-1]-data[0],max(data),data]
@@ -1710,13 +1735,21 @@ def homophily_analysis(multidata):
   return { 'homophily_all_df': all_df, 'homophily_mean_df': mean_df }
 
 def correlation_polarization_fragmentation_homophily_all(polarization_df, fragmentation_df, homophily_df, multidata):
-  correlation_df = pd.DataFrame(columns=['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','run','pf_correlation','ph_correlation'])
+  correlation_df = pd.DataFrame(columns=multidata['params'] + ['run','pf_correlation','ph_correlation'])
   runs_range = polarization_df['run'].unique()
-  param_combos = set(map(lambda key: key[0], multidata.keys()))
+  multidata_keys_minus_params = list_subtract(list(multidata.keys()), ['params'])
+  param_combos = set(map(lambda key: key[0], multidata_keys_minus_params))
   for param_combo in param_combos:
     for run in runs_range:
-      print(f'Correlation for params {param_combo} run {run}')
-      query = f'translate=={param_combo[0]} and tactic=="{param_combo[1]}" and media_dist=="{param_combo[2]}" and citizen_dist=="{param_combo[4]}" and zeta_citizen=={param_combo[5]} and zeta_media=={param_combo[6]} and citizen_memory_len=={param_combo[7]} and repetition=={param_combo[8]} and run=={run}'
+      # print(f'Correlation for params {param_combo} run {run}')
+      query = ''
+      for i in range(len(multidata['params'])):
+        param = multidata['params'][i]
+        val = param_combo[i]
+        str_val = f'"{val}"'
+        query += f"{param}=={val if type(val) != str else str_val} and "
+      query += f'run=={run}'
+      # query = f'translate=={param_combo[0]} and tactic=="{param_combo[1]}" and media_dist=="{param_combo[2]}" and citizen_dist=="{param_combo[4]}" and zeta_citizen=={param_combo[5]} and zeta_media=={param_combo[6]} and citizen_memory_len=={param_combo[7]} and repetition=={param_combo[8]} and run=={run}'
       
       if len(polarization_df.query(query)) == 0:
         print(f'ERROR: No record in polarization for {param_combo} run {run}')
@@ -1734,7 +1767,9 @@ def correlation_polarization_fragmentation_homophily_all(polarization_df, fragme
 
 def correlation_values_for_polarized(polarization_df, correlation_df):
   polarized = polarization_df[polarization_df['category']=='polarized']
-  p_df_with_corr = polarized.merge(correlation_df, on=['translate','tactic','citizen_dist','media_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition','run'])
+  # 'category','lr-intercept','lr-slope','start','end','delta','max','data'
+  merge_columns = list_subtract(polarization_df.columns, ['category','lr-intercept','lr-slope','start','end','delta','max','data'])
+  p_df_with_corr = polarized.merge(correlation_df, on=merge_columns)
   print(f'pf correlation: mean {p_df_with_corr["pf_correlation"].mean()} var {p_df_with_corr["pf_correlation"].var()}')
   print(f'ph correlation: mean {p_df_with_corr["ph_correlation"].mean()} var {p_df_with_corr["ph_correlation"].var()}')
   return p_df_with_corr
@@ -1745,7 +1780,8 @@ def correlation_values_for_polarized(polarization_df, correlation_df):
   #   correlation_row = correlation_df.query(query)
 
 def correlation_polarization_fragmentation_means(polarization_df, fragmentation_df, multidata, out_path):
-  param_combos = set(map(lambda key: key[0], multidata.keys()))
+  multidata_keys_minus_params = list(set(multidata.keys()) - set(['params']))
+  param_combos = set(map(lambda key: key[0], multidata_keys_minus_params))
   data_to_plot = {
     'polarized': {'x': [], 'y': []},
     'depolarized': {'x': [], 'y': []},
@@ -1753,7 +1789,13 @@ def correlation_polarization_fragmentation_means(polarization_df, fragmentation_
     'remained_nonpolarized': {'x': [], 'y': []}
   }
   for param_combo in param_combos:
-    query = f'translate=={param_combo[0]} and tactic=="{param_combo[1]}" and media_dist=="{param_combo[2]}" and citizen_dist=="{param_combo[4]}" and zeta_citizen=={param_combo[5]} and zeta_media=={param_combo[6]} and repetition=={param_combo[8]}'
+    query = ''
+    for i in range(len(multidata['params'])):
+      param = multidata['params'][i]
+      val = param_combo[i]
+      str_val = f'"{val}"'
+      query += f"{param}=={val if type(val) != str else str_val} and "
+    query = query[:-5]
     polarization_rows = polarization_df.query(query)
     fragmentation_rows = fragmentation_df.query(query)
     for i in polarization_rows.index:
@@ -1781,7 +1823,8 @@ def correlation_polarization_fragmentation_means(polarization_df, fragmentation_
   return correlations
 
 def correlation_polarization_homophily_means(polarization_df, homophily_df, multidata, out_path):
-  param_combos = set(map(lambda key: key[0], multidata.keys()))
+  multidata_keys_minus_params = list(set(multidata.keys()) - set(['params']))
+  param_combos = set(map(lambda key: key[0], multidata_keys_minus_params))
   data_to_plot = {
     'polarized': {'x': [], 'y': []},
     'depolarized': {'x': [], 'y': []},
@@ -1789,7 +1832,14 @@ def correlation_polarization_homophily_means(polarization_df, homophily_df, mult
     'remained_nonpolarized': {'x': [], 'y': []}
   }
   for param_combo in param_combos:
-    query = f'translate=={param_combo[0]} and tactic=="{param_combo[1]}" and media_dist=="{param_combo[2]}" and citizen_dist=="{param_combo[4]}" and zeta_citizen=={param_combo[5]} and zeta_media=={param_combo[6]} and repetition=={param_combo[8]}'
+    query = ''
+    for i in range(len(multidata['params'])):
+      param = multidata['params'][i]
+      val = param_combo[i]
+      str_val = f'"{val}"'
+      query += f"{param}=={val if type(val) != str else str_val} and "
+    query = query[:-5]
+    # query = f'translate=={param_combo[0]} and tactic=="{param_combo[1]}" and media_dist=="{param_combo[2]}" and citizen_dist=="{param_combo[4]}" and zeta_citizen=={param_combo[5]} and zeta_media=={param_combo[6]} and repetition=={param_combo[8]}'
     polarization_rows = polarization_df.query(query)
     homophily_rows = homophily_df.query(query)
     for i in polarization_rows.index:
