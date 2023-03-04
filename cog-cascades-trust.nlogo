@@ -800,29 +800,35 @@ to send-media-message-to-subscribers [ m message ]
   ]
 end
 
+to-report cognitive-contagion-p-no-cit [ braine message ]
+  let p 0
+  let scalar 1
+  let expon 1
+  let trans 0
+  let dist (dist-to-agent-brain braine message)
+
+  if cognitive-scalar? [ set scalar cognitive-scalar ]
+  if cognitive-exponent? [ set expon cognitive-exponent ]
+  if cognitive-translate? [ set trans cognitive-translate ]
+
+  ;; Good values for linear:
+  if member? "linear" cognitive-fn [ set p 1 / (trans + (scalar * dist) ^ expon) ]
+
+  ;; Good values for sigmoid: expon = -4, trans = -5 (works like old threshold function)
+  if member? "sigmoid" cognitive-fn [ set p (1 / (1 + (exp (expon * (dist - trans))))) ]
+  ;        show (word "dist: " dist)
+  ;        show (word self ": " (dict-value brain "A") " " message " (p=" p ")")
+
+  if member? "threshold" cognitive-fn [
+    ifelse dist <= trans [ set p 1 ] [ set p 0 ]
+  ]
+  report p
+end
+
 to-report cognitive-contagion-p [ cit message ]
   let p 0
   ask cit [
-    let scalar 1
-    let expon 1
-    let trans 0
-    let dist (dist-to-agent-brain brain message)
-
-    if cognitive-scalar? [ set scalar cognitive-scalar ]
-    if cognitive-exponent? [ set expon cognitive-exponent ]
-    if cognitive-translate? [ set trans cognitive-translate ]
-
-    ;; Good values for linear:
-    if member? "linear" cognitive-fn [ set p 1 / (trans + (scalar * dist) ^ expon) ]
-
-    ;; Good values for sigmoid: expon = -4, trans = -5 (works like old threshold function)
-    if member? "sigmoid" cognitive-fn [ set p (1 / (1 + (exp (expon * (dist - trans))))) ]
-    ;        show (word "dist: " dist)
-    ;        show (word self ": " (dict-value brain "A") " " message " (p=" p ")")
-
-    if member? "threshold" cognitive-fn [
-      ifelse dist <= trans [ set p 1 ] [ set p 0 ]
-    ]
+    set p cognitive-contagion-p-no-cit brain message
   ]
   report p
 end
@@ -1938,6 +1944,16 @@ to-report last-n-of [ liste en ]
   report sublist liste (max (list (length liste - en) 0)) (length liste)
 end
 
+to-report belief-prob-list
+  let l []
+  let i 0
+  repeat belief-resolution [
+    set l lput (cognitive-contagion-p-no-cit [["A" 0]] (list (list "A" i))) l
+    set i i + 1
+  ]
+  report l
+end
+
 ;;;;;;;;;;;;;;;;;;
 ;; PROCS TO HELP
 ;; WITH PYTHON CONVERSION
@@ -2384,7 +2400,7 @@ N
 N
 0
 1000
-100.0
+50.0
 10
 1
 NIL
@@ -2477,7 +2493,7 @@ INPUTBOX
 244
 929
 load-graph-path
-D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/28-Feb-2023-parameter-sweep-low-res/graphs/2-appeal-mean-polarized-15-polarized-0.75-0.75-10-1.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/03-Mar-2023-parameter-sweep-low-res_low-media/graphs/2-appeal-mean-three-mid-polarized-0.75-0.75-10-3.csv
 1
 0
 String
@@ -2488,7 +2504,7 @@ INPUTBOX
 247
 995
 save-graph-path
-D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/01-Mar-2023-static-param-sweep-large-N/graphs/2-appeal-mean-normal-normal-1-barabasi-albert-3-0.csv
+D:/school/grad-school/Tufts/research/cog-cascades-trust/simulation-data/03-Mar-2023-parameter-sweep-low-res_low-media/graphs/2-appeal-mean-three-mid-polarized-0.75-0.75-10-1.csv
 1
 0
 String
@@ -2645,7 +2661,7 @@ cognitive-exponent
 cognitive-exponent
 -10
 10
-4.0
+2.0
 1
 1
 NIL
@@ -2697,7 +2713,7 @@ cognitive-translate
 cognitive-translate
 -10
 20
-2.0
+0.0
 1
 1
 NIL
@@ -3143,7 +3159,7 @@ CHOOSER
 media-ecosystem
 media-ecosystem
 "predetermined" "distribution"
-0
+1
 
 INPUTBOX
 29
@@ -3164,7 +3180,7 @@ CHOOSER
 media-ecosystem-dist
 media-ecosystem-dist
 "uniform" "normal" "polarized"
-1
+2
 
 SLIDER
 483
@@ -3205,7 +3221,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-20.0
+50.0
 1
 1
 NIL
@@ -3219,7 +3235,7 @@ CHOOSER
 media-ecosystem-file
 media-ecosystem-file
 "one-min" "one-mid" "one-max" "two-polarized" "two-mid" "three-polarized" "three-mid"
-5
+6
 
 PLOT
 1047
@@ -3336,7 +3352,7 @@ repetition
 repetition
 0
 10
-0.0
+3.0
 1
 1
 NIL
@@ -3366,7 +3382,7 @@ zeta-cit
 zeta-cit
 0
 1
-0.75
+0.25
 0.01
 1
 NIL
@@ -3389,7 +3405,7 @@ SWITCH
 575
 citizen-citizen-trust?
 citizen-citizen-trust?
-1
+0
 1
 -1000
 
@@ -3400,7 +3416,7 @@ SWITCH
 536
 citizen-media-trust?
 citizen-media-trust?
-1
+0
 1
 -1000
 
@@ -3431,7 +3447,7 @@ zeta-media
 zeta-media
 0
 1
-0.75
+0.25
 0.01
 1
 NIL
@@ -3595,7 +3611,7 @@ SWITCH
 251
 matrix-trust-conn?
 matrix-trust-conn?
-1
+0
 1
 -1000
 
@@ -3624,7 +3640,7 @@ SWITCH
 537
 cits-hear-from-path?
 cits-hear-from-path?
-1
+0
 1
 -1000
 
