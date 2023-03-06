@@ -1096,6 +1096,26 @@ def process_parameter_sweep_tinytest_exp(path):
     # 'homophily': [PLOT_TYPES.LINE]},
     path)
 
+def get_low_res_low_media_multidata(path):
+  cognitive_translate = ['0', '1', '2']
+  institution_tactic = ['broadcast-brain', 'appeal-mean']
+  media_ecosystem_dist = [ 'two-mid', 'two-polarized', 'three-mid', 'three-polarized' ]
+  init_cit_dist = ['normal', 'uniform', 'polarized']
+  zeta_media = ['0.25','0.5','0.75']
+  zeta_cit = ['0.25','0.5','0.75']
+  citizen_memory_length = ['1','2','10']
+  repetition = list(map(str, range(5)))
+
+  measure_multidata = get_all_multidata(
+    [cognitive_translate,media_ecosystem_dist,institution_tactic,init_cit_dist,zeta_cit,zeta_media,citizen_memory_length,repetition],
+    ['translate','media_dist','tactic','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition'],
+    {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
+    'polarization': [PLOT_TYPES.LINE],
+    'fragmentation': [PLOT_TYPES.LINE],
+    'homophily': [PLOT_TYPES.LINE]},
+    path)
+  return measure_multidata
+
 def get_low_res_sweep_multidata(path):
   cognitive_translate = ['0', '1', '2']
   institution_tactic = ['broadcast-brain', 'appeal-mean']
@@ -1188,6 +1208,18 @@ def param_sweep_low_res_total_analysis(data_dir):
     json.dump(fe_absolute_runs, f)
   write_polarization_by_fragmentation_exposure(fe_absolute_runs, data_dir, 'polarization-across-reps-by-frag-zeta-absolute-LATEX.tex')
   write_polarization_by_fragmentation_exposure(fe_relative_runs, data_dir, 'polarization-across-reps-by-frag-zeta-relative-LATEX.tex')
+  print('finished breakdown by fragmentation and exposure')
+
+  tactic_dist_df = polarization_all_df[(polarization_all_df['translate'] == 1) | (polarization_all_df['translate'] == 2)]
+  (td_relative, td_absolute) = polarization_results_by_tactic_distributions(tactic_dist_df)
+  with open(f'{data_dir}/polarization-all-by-tactic-dist-relative.json','w') as f:
+    json.dump(td_relative, f)
+  with open(f'{data_dir}/polarization-all-by-tactic-dist-absolute.json','w') as f:
+    json.dump(td_absolute, f)
+  write_polarization_by_tactic_distribution(td_absolute, data_dir, 'polarization-all-by-tactic-dist-absolute-LATEX.tex')
+  write_polarization_by_tactic_distribution(td_relative, data_dir, 'polarization-all-by-tactic-dist-relative-LATEX.tex')
+  print('finished breakdown by tactic and distribution')
+
   print('finished polarization results by parameter breakdown')
 
   print('starting polarization correlation analysis...')
@@ -1197,10 +1229,12 @@ def param_sweep_low_res_total_analysis(data_dir):
   homophily_data = homophily_analysis(multidata)
   homophily_all_df = homophily_data['homophily_all_df']
   print('homophily data gathered')
-  correlation_df = correlation_polarization_fragmentation_homophily_all(polarization_all_df, fragmentation_all_df, homophily_all_df, multidata)
-  correlation_df.to_csv(f'{data_dir}/correlation-pol-frag-homo-all.csv')
-  polarized_correlations = correlation_values_for_polarized(polarization_all_df, correlation_df)
-  polarized_correlations.to_csv(f'{data_dir}/polarized-correlation-pol-frag-homo-all.csv')
+  # correlation_df = correlation_polarization_fragmentation_homophily_all(polarization_all_df, fragmentation_all_df, homophily_all_df, multidata)
+  # correlation_df.to_csv(f'{data_dir}/correlation-pol-frag-homo-all.csv')
+  # polarized_correlations = correlation_values_for_polarized(polarization_all_df, correlation_df)
+  # polarized_correlations.to_csv(f'{data_dir}/polarized-correlation-pol-frag-homo-all.csv')
+
+  # Old correlation analysis
   # pol_frag_corr = correlation_polarization_fragmentation_means(polarization_all_df, fragmentation_all_df, multidata, f'{data_dir}/polarization-fragmentation-correlation.png')
   # with open(f'{data_dir}/polarization-fragmentation-correlation.txt','w') as f:
   #   f.write(str(pol_frag_corr))
@@ -1408,19 +1442,19 @@ def polarization_results_by_tactic_distributions(df):
   This contains 2 key dataframes -- one for polarizing results, one for
   nonpolarizing ones
   '''
-  tactics = ['broadcast','appeal-mean']
+  tactics = ['broadcast-brain','appeal-mean']
   dist_values = ['uniform','normal','polarized']
   relative_proportions = {}
   absolute_proportions = {}
   for tactic in tactics:
     for cit_dist in dist_values:
       for media_dist in dist_values:
-        partition_polarized = df.query(f'tactic=={tactic} and citizen_dist=={cit_dist} and media_dist=={media_dist} and category=="polarized"')
-        partition_depolarized = df.query(f'tactic=={tactic} and citizen_dist=={cit_dist} and media_dist=={media_dist} and category=="depolarized"')
-        partition_remained_polarized = df.query(f'tactic=={tactic} and citizen_dist=={cit_dist} and media_dist=={media_dist} and category=="remained_polarized"')
-        partition_remained_nonpolarized = df.query(f'tactic=={tactic} and citizen_dist=={cit_dist} and media_dist=={media_dist} and category=="remained_nonpolarized"')
+        partition_polarized = df.query(f'tactic=="{tactic}" and citizen_dist=="{cit_dist}" and media_dist=="{media_dist}" and category=="polarized"')
+        partition_depolarized = df.query(f'tactic=="{tactic}" and citizen_dist=="{cit_dist}" and media_dist=="{media_dist}" and category=="depolarized"')
+        partition_remained_polarized = df.query(f'tactic=="{tactic}" and citizen_dist=="{cit_dist}" and media_dist=="{media_dist}" and category=="remained_polarized"')
+        partition_remained_nonpolarized = df.query(f'tactic=="{tactic}" and citizen_dist=="{cit_dist}" and media_dist=="{media_dist}" and category=="remained_nonpolarized"')
 
-        partition_all = df.query(f'tactic=={tactic} and citizen_dist=={cit_dist} and media_dist=={media_dist}')
+        partition_all = df.query(f'tactic=="{tactic}" and citizen_dist=="{cit_dist}" and media_dist=="{media_dist}"')
         if len(partition_all) == 0:
           partition_all = pd.DataFrame({'empty': [1]})
 
