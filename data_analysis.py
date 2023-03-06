@@ -1161,13 +1161,14 @@ ANALYSES OF RESULTS
 ================
 '''
 
-def param_sweep_low_res_total_analysis(data_dir):
+def dynamic_model_total_analysis(data_dir, data_file, params):
   print('loading polarization data...')
-  df = read_polarization_dataframe(f'{data_dir}/low-res-sweep-all.csv')
+  df = read_polarization_dataframe(f'{data_dir}/{data_file}')
   df_no_disconnected = df[(df['zeta_media'] != 1) & (df['zeta_citizen'] != 1) & ((df['zeta_media'] != 0.75) | (df['translate'] != 0)) & ((df['zeta_citizen'] != 0.75) | (df['translate'] != 0))]
   df_no_disconnected = df_no_disconnected.drop(columns=['Unnamed: 0'])
   multidata = dataframe_as_multidata(df_no_disconnected)
-  multidata['params'] = ['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition']
+  # multidata['params'] = ['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition']
+  multidata['params'] = params
   print('loaded polarization data')
 
   print('starting polarization analysis...')
@@ -1247,10 +1248,10 @@ def param_sweep_low_res_total_analysis(data_dir):
   homophily_data = homophily_analysis(multidata)
   homophily_all_df = homophily_data['homophily_all_df']
   print('homophily data gathered')
-  # correlation_df = correlation_polarization_fragmentation_homophily_all(polarization_all_df, fragmentation_all_df, homophily_all_df, multidata)
-  # correlation_df.to_csv(f'{data_dir}/correlation-pol-frag-homo-all.csv')
-  # polarized_correlations = correlation_values_for_polarized(polarization_all_df, correlation_df)
-  # polarized_correlations.to_csv(f'{data_dir}/polarized-correlation-pol-frag-homo-all.csv')
+  correlation_df = correlation_polarization_fragmentation_homophily_all(polarization_all_df, fragmentation_all_df, homophily_all_df, multidata)
+  correlation_df.to_csv(f'{data_dir}/correlation-pol-frag-homo-all.csv')
+  polarized_correlations = correlation_values_for_polarized(polarization_all_df, correlation_df)
+  polarized_correlations.to_csv(f'{data_dir}/polarized-correlation-pol-frag-homo-all.csv')
 
   # Old correlation analysis
   # pol_frag_corr = correlation_polarization_fragmentation_means(polarization_all_df, fragmentation_all_df, multidata, f'{data_dir}/polarization-fragmentation-correlation.png')
