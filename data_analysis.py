@@ -1161,6 +1161,59 @@ ANALYSES OF RESULTS
 ================
 '''
 
+def static_model_total_analysis(data_dir, data_file, params):
+  print('loading polarization data...')
+  df = read_polarization_dataframe(f'{data_dir}/{data_file}')
+  df_no_disconnected = df_no_disconnected.drop(columns=['Unnamed: 0'])
+  multidata = dataframe_as_multidata(df_no_disconnected)
+  multidata['params'] = params
+  print('loaded polarization data')
+
+  print('starting polarization analysis...')
+  polarization_slope = 0.01
+  polarization_intercept = 5.5
+
+  polarization_categories = ['polarized','depolarized','remained_polarized','remained_nonpolarized']
+
+  polarization_data = polarization_analysis(multidata, polarization_slope, polarization_intercept)
+  with open(f'{data_dir}/polarization-results.json','w') as f:
+    polarization_results = { category: len(polarization_data[category]) for category in polarization_categories }
+    json.dump(polarization_results, f)
+  print('finished polarization analysis')
+ 
+  polarization_mean_df = polarization_data['polarization_df']
+  polarization_all_df = polarization_data['polarization_all_df']
+
+  print('starting polarization stability analysis...')
+  polarization_stability_data = polarization_stability_analysis(multidata, polarization_slope, polarization_intercept)
+  with open(f'{data_dir}/polarization-stability-diff-parts.json','w') as f:
+    json.dump(polarization_stability_data['diff_parts'], f)
+  print('finished polarization stability analysis')
+
+  stability_df = polarization_stability_data['stability']
+  print('starting polarization results by parameter breakdown...')
+  (fe_relative, fe_absolute) = static_polarization_results_by_fragmentation_exposure(polarization_all_df)
+  with open(f'{data_dir}/polarization-by-frag-zeta-relative.json','w') as f:
+    json.dump(fe_relative, f)
+  with open(f'{data_dir}/polarization-by-frag-zeta-absolute.json','w') as f:
+    json.dump(fe_absolute, f)
+  write_static_polarization_by_fragmentation_exposure(fe_absolute, data_dir, 'polarization-by-frag-zeta-absolute-LATEX.tex')
+  write_static_polarization_by_fragmentation_exposure(fe_relative, data_dir, 'polarization-by-frag-zeta-relative-LATEX.tex')
+
+  print('finished breakdown by fragmentation and exposure')
+
+  tactic_dist_df = polarization_all_df[(polarization_all_df['translate'] == 1) | (polarization_all_df['translate'] == 2)]
+  (td_relative, td_absolute) = polarization_results_by_tactic_distributions(tactic_dist_df)
+  with open(f'{data_dir}/polarization-all-by-tactic-dist-relative.json','w') as f:
+    json.dump(td_relative, f)
+  with open(f'{data_dir}/polarization-all-by-tactic-dist-absolute.json','w') as f:
+    json.dump(td_absolute, f)
+  write_polarization_by_tactic_distribution(td_absolute, data_dir, 'polarization-all-by-tactic-dist-absolute-LATEX.tex')
+  write_polarization_by_tactic_distribution(td_relative, data_dir, 'polarization-all-by-tactic-dist-relative-LATEX.tex')
+  print('finished breakdown by tactic and distribution')
+
+  return polarization_all_df
+
 def dynamic_model_total_analysis(data_dir, data_file, params):
   print('loading polarization data...')
   df = read_polarization_dataframe(f'{data_dir}/{data_file}')
@@ -1212,21 +1265,21 @@ def dynamic_model_total_analysis(data_dir, data_file, params):
   polarization_df_across_runs = polarization_data_across_runs['polarization_df']
 
   print('starting polarization results by parameter breakdown...')
-  (fe_relative, fe_absolute) = polarization_results_by_fragmentation_exposure(polarization_all_df)
+  (fe_relative, fe_absolute) = dynamic_polarization_results_by_fragmentation_exposure(polarization_all_df)
   with open(f'{data_dir}/polarization-by-frag-zeta-relative.json','w') as f:
     json.dump(fe_relative, f)
   with open(f'{data_dir}/polarization-by-frag-zeta-absolute.json','w') as f:
     json.dump(fe_absolute, f)
-  write_polarization_by_fragmentation_exposure(fe_absolute, data_dir, 'polarization-by-frag-zeta-absolute-LATEX.tex')
-  write_polarization_by_fragmentation_exposure(fe_relative, data_dir, 'polarization-by-frag-zeta-relative-LATEX.tex')
+  write_dynamic_polarization_by_fragmentation_exposure(fe_absolute, data_dir, 'polarization-by-frag-zeta-absolute-LATEX.tex')
+  write_dynamic_polarization_by_fragmentation_exposure(fe_relative, data_dir, 'polarization-by-frag-zeta-relative-LATEX.tex')
 
-  (fe_relative_runs, fe_absolute_runs) = polarization_results_by_fragmentation_exposure(polarization_df_across_runs)
+  (fe_relative_runs, fe_absolute_runs) = dynamic_polarization_results_by_fragmentation_exposure(polarization_df_across_runs)
   with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-relative.json','w') as f:
     json.dump(fe_relative_runs, f)
   with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-absolute.json','w') as f:
     json.dump(fe_absolute_runs, f)
-  write_polarization_by_fragmentation_exposure(fe_absolute_runs, data_dir, 'polarization-across-reps-by-frag-zeta-absolute-LATEX.tex')
-  write_polarization_by_fragmentation_exposure(fe_relative_runs, data_dir, 'polarization-across-reps-by-frag-zeta-relative-LATEX.tex')
+  write_dynamic_polarization_by_fragmentation_exposure(fe_absolute_runs, data_dir, 'polarization-across-reps-by-frag-zeta-absolute-LATEX.tex')
+  write_dynamic_polarization_by_fragmentation_exposure(fe_relative_runs, data_dir, 'polarization-across-reps-by-frag-zeta-relative-LATEX.tex')
   print('finished breakdown by fragmentation and exposure')
 
   tactic_dist_df = polarization_all_df[(polarization_all_df['translate'] == 1) | (polarization_all_df['translate'] == 2)]
@@ -1369,7 +1422,52 @@ def polarization_results_by_tactic_exposure(polarization_data):
       # Use this line to report number of results that are polarized
       # proportions[(gamma)] = {'polarized': len(partition_polarized), 'nonpolarized': len(partition_nonpolarized) }
 
-def write_polarization_by_fragmentation_exposure(proportions, data_dir, filename):
+def write_static_polarization_by_fragmentation_exposure(proportions, data_dir, filename):
+  latex_format = """\\begingroup
+    \\setlength{\\tabcolsep}{6pt}
+    \\renewcommand{\\arraystretch}{1.5}
+    \\begin{table}[]
+      \\centering
+      \\begin{tabular}{c||c|c|c||c|c|c}
+      $h_G$ &\\multicolumn{3}{c||}{1}&\\multicolumn{3}{c||}{$h(b_u,b_v)$}\\\\
+      \\hline
+      \\hline
+      $\\epsilon=2$ & 2,barabasi-albert,0 & 2,barabasi-albert,1 & 2,barabasi-albert,2 & 2,ba-homophilic,0 & 2,ba-homophilic,1 & 2,ba-homophilic,2\\\\
+      \\hline
+      $\\epsilon=1$ & 1,barabasi-albert,0 & 1,barabasi-albert,1 & 1,barabasi-albert,2 & 1,ba-homophilic,0 & 1,ba-homophilic,1 & 1,ba-homophilic,2\\\\
+      \\hline
+      $\\epsilon=0$ & 0,barabasi-albert,0 & 0,barabasi-albert,1 & 0,barabasi-albert,2 & 0,ba-homophilic,0 & 0,ba-homophilic,1 & 0,ba-homophilic,2\\\\
+      \\hline
+      \\hline
+      $\\gamma$ & 0 & 1 & 2 & 0 & 1 & 2\\\\
+      \\end{tabular}
+      \\caption{Percentage of polarized / nonpolarized results (over the 36 experiments in each cell) broken down by selective exposure ($\gamma$ and $h_G$) and fragmentation ($\epsilon$).}
+      \\label{tab:results-epsilon-gamma-hg}
+    \\end{table}
+    \\endgroup"""
+  latex_format_four_cats = latex_format
+  latex_format_two_cats = latex_format
+  for (key,val) in proportions.items():
+    if key == 'key': continue
+    polarized = val['polarized']
+    depolarized = val['depolarized']
+    remained_polarized = val['remained_polarized']
+    remained_nonpolarized = val['remained_nonpolarized']
+
+    key_pieces = key.split(',')
+    zeta_c = key_pieces[0]
+    zeta_i = key_pieces[1]
+    translate = key_pieces[2]
+
+    latex_format_four_cats = latex_format_four_cats.replace(f'{zeta_c},{zeta_i},{translate}', f'{polarized}/{depolarized}/{remained_polarized}/{remained_nonpolarized}')
+    latex_format_two_cats = latex_format_two_cats.replace(f'{zeta_c},{zeta_i},{translate}', f'{polarized+remained_polarized}/{depolarized+remained_nonpolarized}')
+
+  with open(f'{data_dir}/{filename}'.replace('.tex','_all-categories.tex'),'w') as f:
+    f.write(latex_format_four_cats)
+  with open(f'{data_dir}/{filename}'.replace('.tex','_two-categories.tex'),'w') as f:
+    f.write(latex_format_two_cats)
+
+def write_dynamic_polarization_by_fragmentation_exposure(proportions, data_dir, filename):
   latex_format = """\\begingroup
     \\setlength{\\tabcolsep}{6pt}
     \\renewcommand{\\arraystretch}{1.5}
@@ -1414,7 +1512,7 @@ def write_polarization_by_fragmentation_exposure(proportions, data_dir, filename
   with open(f'{data_dir}/{filename}'.replace('.tex','_two-categories.tex'),'w') as f:
     f.write(latex_format_two_cats)
 
-def polarization_results_by_fragmentation_exposure(df):
+def dynamic_polarization_results_by_fragmentation_exposure(df):
   '''
   Run an analysis to see how many results polarized vs nonpolarized for
   parameter combinations of h_G (homophily), epislon, and gamma (translate).
@@ -1449,6 +1547,43 @@ def polarization_results_by_fragmentation_exposure(df):
         absolute_proportions[f'{zeta_cit},{zeta_media},{gamma}'] = {'polarized': len(partition_polarized) , 'depolarized': len(partition_depolarized) , 'remained_polarized': len(partition_remained_polarized) , 'remained_nonpolarized': len(partition_remained_nonpolarized), 'total': len(partition_all) }
   relative_proportions['key'] = 'zeta_cit,zeta_media,translate'
   absolute_proportions['key'] = 'zeta_cit,zeta_media,translate'
+  return (relative_proportions, absolute_proportions)
+
+def static_polarization_results_by_fragmentation_exposure(df):
+  '''
+  Run an analysis to see how many results polarized vs nonpolarized for
+  parameter combinations of h_G (homophily), epislon, and gamma (translate).
+
+  This analysis supports Table 3 in Rabb & Cowen 2022.
+  
+  :param polarization_data: The result of polarization_analysis(multidata)
+  This contains 2 key dataframes -- one for polarizing results, one for
+  nonpolarizing ones
+  '''
+  # df = polarization_data['polarization_df']
+  epsilon_values = [0,1,2]
+  graph_types = ['barabasi-albert','ba-homophilic']
+  gamma_values = [0,1,2]
+  relative_proportions = {}
+  absolute_proportions = {}
+  for epsilon in epsilon_values:
+    for gamma in gamma_values:
+      for graph_type in graph_types:
+        partition_polarized = df.query(f'epsilon=={epsilon} and graph_type=={graph_type} and  translate=={gamma} and category=="polarized"')
+        partition_depolarized = df.query(f'epsilon=={epsilon} and graph_type=={graph_type} and translate=={gamma} and category=="depolarized"')
+        partition_remained_polarized = df.query(f'epsilon=={epsilon} and graph_type=={graph_type} and translate=={gamma} and category=="remained_polarized"')
+        partition_remained_nonpolarized = df.query(f'epsilon=={epsilon} and graph_type=={graph_type} and translate=={gamma} and category=="remained_nonpolarized"')
+        partition_all = df.query(f'epsilon=={epsilon} and graph_type=={graph_type} and translate=={gamma}')
+        if len(partition_all) == 0:
+          partition_all = pd.DataFrame({'empty': [1]})
+
+        # Use this line to report percent of results that are polarized
+        relative_proportions[f'{epsilon},{graph_type},{gamma}'] = {'polarized': len(partition_polarized) / len(partition_all), 'depolarized': len(partition_depolarized) / len(partition_all), 'remained_polarized': len(partition_remained_polarized) / len(partition_all), 'remained_nonpolarized': len(partition_remained_nonpolarized) / len(partition_all) }
+
+        # Use this line to report number of results that are polarized
+        absolute_proportions[f'{epsilon},{graph_type},{gamma}'] = {'polarized': len(partition_polarized) , 'depolarized': len(partition_depolarized) , 'remained_polarized': len(partition_remained_polarized) , 'remained_nonpolarized': len(partition_remained_nonpolarized), 'total': len(partition_all) }
+  relative_proportions['key'] = 'epsilon,graph_type,translate'
+  absolute_proportions['key'] = 'epsilon,graph_type,translate'
   return (relative_proportions, absolute_proportions)
 
 def polarization_results_by_tactic_distributions(df):
