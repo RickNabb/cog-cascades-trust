@@ -2661,7 +2661,7 @@ cognitive-exponent
 cognitive-exponent
 -10
 10
-2.0
+1.0
 1
 1
 NIL
@@ -3382,7 +3382,7 @@ zeta-cit
 zeta-cit
 0
 1
-0.25
+0.5
 0.01
 1
 NIL
@@ -3405,7 +3405,7 @@ SWITCH
 575
 citizen-citizen-trust?
 citizen-citizen-trust?
-0
+1
 1
 -1000
 
@@ -3416,7 +3416,7 @@ SWITCH
 536
 citizen-media-trust?
 citizen-media-trust?
-0
+1
 1
 -1000
 
@@ -3447,7 +3447,7 @@ zeta-media
 zeta-media
 0
 1
-0.25
+0.5
 0.01
 1
 NIL
@@ -4929,6 +4929,7 @@ export-plot "polarization" (word contagion-dir "/" behavior-rand "_polarization.
     </enumeratedValueSet>
     <enumeratedValueSet variable="graph-type">
       <value value="&quot;barabasi-albert&quot;"/>
+      <value value="&quot;ba-homophilic&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="ba-m">
       <value value="3"/>
