@@ -1096,6 +1096,24 @@ def process_parameter_sweep_tinytest_exp(path):
     # 'homophily': [PLOT_TYPES.LINE]},
     path)
 
+def get_static_param_sweep_high_N_multidata(path):
+  cognitive_translate = ['0', '1', '2']
+  epsilon = ['0','1','2']
+  institution_tactic = ['broadcast-brain', 'appeal-mean']
+  media_ecosystem_n = ['20']
+  media_ecosystem_dist = [ 'uniform', 'normal', 'polarized' ]
+  init_cit_dist = ['normal', 'uniform', 'polarized']
+  repetition = ['0']
+  graph_type = ['barabasi-albert','ba-homophilic']
+  ba_m = ['3']
+  process_exp_outputs(
+    [cognitive_translate,institution_tactic,media_ecosystem_dist,init_cit_dist,epsilon,graph_type,ba_m,repetition],
+    {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
+    'polarization': [PLOT_TYPES.LINE],
+    'fragmentation': [PLOT_TYPES.LINE],
+    'homophily': [PLOT_TYPES.LINE]},
+    path)
+
 def get_low_res_low_media_multidata(path):
   cognitive_translate = ['0', '1', '2']
   institution_tactic = ['broadcast-brain', 'appeal-mean']
