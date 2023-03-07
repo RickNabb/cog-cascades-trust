@@ -1628,14 +1628,14 @@ def write_polarization_by_tactic_distribution(proportions, data_dir, filename):
     \\begin{table}[]
       \\centering
       \\begin{tabular}{c||c|c|c||c|c|c||c|c|c}
-      $\\mathcal{I}$ &\\multicolumn{3}{c||}{\\mathcal{U}}&\\multicolumn{3}{c||}{\\mathcal{N}}&\\multicolumn{3}{c}{\\mathcal{P}}\\\\
+      $\\mathcal{I}$ &\\multicolumn{3}{c||}{$\\mathcal{U}$}&\\multicolumn{3}{c||}{$\\mathcal{N}$}&\\multicolumn{3}{c}{$\\mathcal{P}$}\\\\
       \\hline
       \\hline
-      $\\varphi=broadcast$ & broadcast,uniform,uniform & broadcast,uniform,normal & broadcast,uniform,polarized & broadcast,normal,uniform & broadcast,normal,normal & broadcast,normal,polarized & broadcast,polarized,uniform & broadcast,polarized,normal & broadcast,polarized,polarized \\\\
+      $\\varphi=broadcast$ & broadcast-brain,uniform,uniform & broadcast-brain,uniform,normal & broadcast-brain,uniform,polarized & broadcast-brain,normal,uniform & broadcast-brain,normal,normal & broadcast-brain,normal,polarized & broadcast-brain,polarized,uniform & broadcast-brain,polarized,normal & broadcast-brain,polarized,polarized \\\\
       \\hline
-      $\\varphi=appeal-mean$ & appeal-mean,uniform,uniform & appeal-mean,uniform,normal & appeal-mean,uniform,polarized & appeal-mean,normal,uniform & appeal-mean,normal,normal & appeal-mean,normal,polarized & appeal-mean,polarized,uniform & appeal-mean,polarized,normal & appeal-mean,polarized,polarized \\\\
+      $\\varphi=appeal mean$ & appeal-mean,uniform,uniform & appeal-mean,uniform,normal & appeal-mean,uniform,polarized & appeal-mean,normal,uniform & appeal-mean,normal,normal & appeal-mean,normal,polarized & appeal-mean,polarized,uniform & appeal-mean,polarized,normal & appeal-mean,polarized,polarized \\\\
       \\hline
-      $\\mathcal{C}& \\mathcal{U} & \\mathcal{N} & \\mathcal{P} & \\mathcal{U} & \\mathcal{N} & \\mathcal{P} &\\mathcal{U} & \\mathcal{N} & \\mathcal{P}\\
+      $\\mathcal{C}$ & $\\mathcal{U}$ & $\\mathcal{N}$ & $\\mathcal{P}$ & $\\mathcal{U}$ & $\\mathcal{N}$ & $\\mathcal{P}$ & $\\mathcal{U}$ & $\\mathcal{N}$ & $\\mathcal{P}$\\
       \\end{tabular}
       \\caption{Percentage of polarized / depolarized / remained polarized / remained nonpolarized results broken down by media tactic ($\\varphi$) and initial belief distributions ($\\mathcal{C}$ and $\\mathcal{I}$).}
       \\label{tab:results-tactic-distribution}
@@ -1655,8 +1655,8 @@ def write_polarization_by_tactic_distribution(proportions, data_dir, filename):
     cit_dist = key_pieces[1]
     media_dist = key_pieces[2]
 
-    latex_format_four_cats = latex_format_four_cats.replace(f'{tactic},{cit_dist},{media_dist}', f'{polarized}/{depolarized}/{remained_polarized}/{remained_nonpolarized}')
-    latex_format_two_cats = latex_format_two_cats.replace(f'{tactic},{cit_dist},{media_dist}', f'{polarized+remained_polarized}/{depolarized+remained_nonpolarized}')
+    latex_format_four_cats = latex_format_four_cats.replace(f'{tactic},{media_dist},{cit_dist}', f'{polarized}/{depolarized}/{remained_polarized}/{remained_nonpolarized}')
+    latex_format_two_cats = latex_format_two_cats.replace(f'{tactic},{media_dist},{cit_dist}', f'{polarized+remained_polarized}/{depolarized+remained_nonpolarized}')
 
   with open(f'{data_dir}/{filename}'.replace('.tex','_all-categories.tex'),'w') as f:
     f.write(latex_format_four_cats)
