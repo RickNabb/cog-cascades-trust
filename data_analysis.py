@@ -161,7 +161,7 @@ def process_multi_chart_data(in_path, in_filename='percent-agent-beliefs'):
 
         if len(data_vector) != full_data_size:
           # TODO: Need to do something here that reports the error
-          print('ERROR parsing multi chart data -- data length did not equal number of ticks')
+          print(f'ERROR parsing multi chart data -- data length {len(data_vector)} did not equal number of ticks {full_data_size}')
           continue
 
         if means[key] == []:
@@ -1342,6 +1342,18 @@ def runs_with_unconnected_institution_graphs(graphs_path):
       df.loc[len(df.index)] = param_combo + [len(media_without_edges),media_without_edges]
   return df
 
+def missing_values_in_data(multidata):
+  missing_vals_polarization = { key: len(val['0']) for (key,val) in multidata.items() if key[1]=='polarization' and len(val['0']) != 5 }
+  missing_vals_fragmentation = { key: len(val['default']) for (key,val) in multidata.items() if key[1]=='fragmentation' and len(val['default']) != 5 }
+  missing_vals_homophily = { key: len(val['default']) for (key,val) in multidata.items() if key[1]=='homophily' and len(val['default']) != 5 }
+
+  missing_values = {
+    'polarization': { ','.join(key[0]): 5-val for key,val in missing_vals_polarization.items() },
+    'fragmentation': { ','.join(key[0]): 5-val for key,val in missing_vals_fragmentation.items() },
+    'homophily': { ','.join(key[0]): 5-val for key,val in missing_vals_homophily.items() }
+  }
+  return missing_values
+
 def logistic_regression_polarization(polarization_data):
   '''
   Run a logistic regression to fit polarization data given different
@@ -1621,6 +1633,42 @@ def polarization_results_by_tactic_distributions(df):
   absolute_proportions['key'] = 'tactic,citizen_dist,media_dist'
   return (relative_proportions, absolute_proportions)
 
+def polarization_results_by_tactic_distributions_predetermined_media(df):
+  '''
+  Run an analysis to see how many results polarized vs nonpolarized for
+  parameter gamma (translate), citizen distribution and institution
+  distribution.
+  
+  :param polarization_data: The result of polarization_analysis(multidata)
+  This contains 2 key dataframes -- one for polarizing results, one for
+  nonpolarizing ones
+  '''
+  tactics = ['broadcast-brain','appeal-mean']
+  cit_dist_values = ['uniform','normal','polarized']
+  media_dist_values = ['two-mid','two-polarized','three-mid','three-polarized']
+  relative_proportions = {}
+  absolute_proportions = {}
+  for tactic in tactics:
+    for cit_dist in cit_dist_values:
+      for media_dist in media_dist_values:
+        partition_polarized = df.query(f'tactic=="{tactic}" and citizen_dist=="{cit_dist}" and media_dist=="{media_dist}" and category=="polarized"')
+        partition_depolarized = df.query(f'tactic=="{tactic}" and citizen_dist=="{cit_dist}" and media_dist=="{media_dist}" and category=="depolarized"')
+        partition_remained_polarized = df.query(f'tactic=="{tactic}" and citizen_dist=="{cit_dist}" and media_dist=="{media_dist}" and category=="remained_polarized"')
+        partition_remained_nonpolarized = df.query(f'tactic=="{tactic}" and citizen_dist=="{cit_dist}" and media_dist=="{media_dist}" and category=="remained_nonpolarized"')
+
+        partition_all = df.query(f'tactic=="{tactic}" and citizen_dist=="{cit_dist}" and media_dist=="{media_dist}"')
+        if len(partition_all) == 0:
+          partition_all = pd.DataFrame({'empty': [1]})
+
+        # Use this line to report percent of results that are polarized
+        relative_proportions[f'{tactic},{cit_dist},{media_dist}'] = {'polarized': len(partition_polarized) / len(partition_all), 'depolarized': len(partition_depolarized) / len(partition_all), 'remained_polarized': len(partition_remained_polarized) / len(partition_all), 'remained_nonpolarized': len(partition_remained_nonpolarized) / len(partition_all) }
+
+        # Use this line to report number of results that are polarized
+        absolute_proportions[f'{tactic},{cit_dist},{media_dist}'] = {'polarized': len(partition_polarized) , 'depolarized': len(partition_depolarized) , 'remained_polarized': len(partition_remained_polarized) , 'remained_nonpolarized': len(partition_remained_nonpolarized), 'total': len(partition_all) }
+  relative_proportions['key'] = 'tactic,citizen_dist,media_dist'
+  absolute_proportions['key'] = 'tactic,citizen_dist,media_dist'
+  return (relative_proportions, absolute_proportions)
+
 def write_polarization_by_tactic_distribution(proportions, data_dir, filename):
   latex_format = """\\begingroup
     \\setlength{\\tabcolsep}{6pt}
@@ -1636,6 +1684,54 @@ def write_polarization_by_tactic_distribution(proportions, data_dir, filename):
       $\\varphi=appeal mean$ & appeal-mean,uniform,uniform & appeal-mean,uniform,normal & appeal-mean,uniform,polarized & appeal-mean,normal,uniform & appeal-mean,normal,normal & appeal-mean,normal,polarized & appeal-mean,polarized,uniform & appeal-mean,polarized,normal & appeal-mean,polarized,polarized \\\\
       \\hline
       $\\mathcal{C}$ & $\\mathcal{U}$ & $\\mathcal{N}$ & $\\mathcal{P}$ & $\\mathcal{U}$ & $\\mathcal{N}$ & $\\mathcal{P}$ & $\\mathcal{U}$ & $\\mathcal{N}$ & $\\mathcal{P}$\\
+      \\end{tabular}
+      \\caption{Percentage of polarized / depolarized / remained polarized / remained nonpolarized results broken down by media tactic ($\\varphi$) and initial belief distributions ($\\mathcal{C}$ and $\\mathcal{I}$).}
+      \\label{tab:results-tactic-distribution}
+    \\end{table}
+    \\endgroup"""
+  latex_format_four_cats = latex_format
+  latex_format_two_cats = latex_format
+  for (key,val) in proportions.items():
+    if key == 'key': continue
+    polarized = val['polarized']
+    depolarized = val['depolarized']
+    remained_polarized = val['remained_polarized']
+    remained_nonpolarized = val['remained_nonpolarized']
+
+    key_pieces = key.split(',')
+    tactic = key_pieces[0]
+    cit_dist = key_pieces[1]
+    media_dist = key_pieces[2]
+
+    latex_format_four_cats = latex_format_four_cats.replace(f'{tactic},{media_dist},{cit_dist}', f'{polarized}/{depolarized}/{remained_polarized}/{remained_nonpolarized}')
+    latex_format_two_cats = latex_format_two_cats.replace(f'{tactic},{media_dist},{cit_dist}', f'{polarized+remained_polarized}/{depolarized+remained_nonpolarized}')
+
+  with open(f'{data_dir}/{filename}'.replace('.tex','_all-categories.tex'),'w') as f:
+    f.write(latex_format_four_cats)
+  with open(f'{data_dir}/{filename}'.replace('.tex','_two-categories.tex'),'w') as f:
+    f.write(latex_format_two_cats)
+
+def write_polarization_by_tactic_distribution_predetermined_media(proportions, data_dir, filename):
+  latex_format = """\\begingroup
+    \\setlength{\\tabcolsep}{6pt}
+    \\renewcommand{\\arraystretch}{1.5}
+    \\begin{table}[]
+      \\centering
+      \\begin{tabular}{c||c|c|c||c|c|c}
+      $\\mathcal{I}$ &\\multicolumn{3}{c||}{$\\mathcal{N}(2)$}&\\multicolumn{3}{c||}{$\\mathcal{P}(2)$}\\\\
+      \\hline
+      \\hline
+      $\\varphi=broadcast$ & broadcast-brain,two-mid,uniform & broadcast-brain,two-mid,normal & broadcast-brain,two-mid,polarized & broadcast-brain,two-polarized,uniform & broadcast-brain,two-polarized,normal & broadcast-brain,two-polarized,polarized & \\\\
+      \\hline
+      $\\varphi=mean$ & appeal-mean,two-mid,uniform & appeal-mean,two-mid,normal & appeal-mean,two-mid,polarized & appeal-mean,two-polarized,uniform & appeal-mean,two-polarized,normal & appeal-mean,two-polarized,polarized \\\\
+      $\\mathcal{I}$ &\\multicolumn{3}{c}{$\\mathcal{N}(3)$}&\\multicolumn{3}{c}{$\\mathcal{P}(3)$}\\\\
+      \\hline
+      \\hline
+      $\\varphi=broadcast$ & broadcast-brain,three-mid,uniform & broadcast-brain,three-mid,normal & broadcast-brain,three-mid,polarized & broadcast-brain,three-polarized,uniform & broadcast-brain,three-polarized,normal & broadcast-brain,three-polarized,polarized
+      \\hline
+      $\\varphi=mean$ & appeal-mean,three-mid,uniform & appeal-mean,three-mid,normal & appeal-mean,three-mid,polarized & appeal-mean,three-polarized,uniform & appeal-mean,three-polarized,normal & appeal-mean,three-polarized,polarized\\\\
+      \\hline
+      $\\mathcal{C}$ & $\\mathcal{U}$ & $\\mathcal{N}$ & $\\mathcal{P}$ & $\\mathcal{U}$ & $\\mathcal{N}$ & $\\mathcal{P}$\\\\ 
       \\end{tabular}
       \\caption{Percentage of polarized / depolarized / remained polarized / remained nonpolarized results broken down by media tactic ($\\varphi$) and initial belief distributions ($\\mathcal{C}$ and $\\mathcal{I}$).}
       \\label{tab:results-tactic-distribution}
