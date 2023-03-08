@@ -1479,6 +1479,18 @@ def write_static_polarization_by_fragmentation_exposure(proportions, data_dir, f
   with open(f'{data_dir}/{filename}'.replace('.tex','_two-categories.tex'),'w') as f:
     f.write(latex_format_two_cats)
 
+def write_dynamic_polarization_by_fragmentation_exposure_mem(proportions, data_dir, filename):
+  mem_lens = set([ key.split(',')[0] for key in proportions.keys() ])
+  by_memory = {}
+  for mem_len in mem_lens:
+    if mem_len not in by_memory and mem_len != 'key': by_memory[mem_len] = {}
+    by_memory[mem_len] = { ','.join(key.split(',')[1:]): val for key,val in proportions.items() if key.split(',')[0] == mem_len }
+  by_memory['key'] = ','.join(proportions['key'].split(',')[1:])
+  for mem_len,proportion in by_memory.items():
+    if mem_len == 'key': continue
+    write_dynamic_polarization_by_fragmentation_exposure(proportion, data_dir, f'{filename.replace(".tex", "_mem-" + mem_len + ".tex")}')
+  return by_memory
+
 def write_dynamic_polarization_by_fragmentation_exposure(proportions, data_dir, filename):
   latex_format = """\\begingroup
     \\setlength{\\tabcolsep}{6pt}
@@ -1559,6 +1571,45 @@ def dynamic_polarization_results_by_fragmentation_exposure(df):
         absolute_proportions[f'{zeta_cit},{zeta_media},{gamma}'] = {'polarized': len(partition_polarized) , 'depolarized': len(partition_depolarized) , 'remained_polarized': len(partition_remained_polarized) , 'remained_nonpolarized': len(partition_remained_nonpolarized), 'total': len(partition_all) }
   relative_proportions['key'] = 'zeta_cit,zeta_media,translate'
   absolute_proportions['key'] = 'zeta_cit,zeta_media,translate'
+  return (relative_proportions, absolute_proportions)
+
+def dynamic_polarization_results_by_fragmentation_exposure_memory(df):
+  '''
+  Run an analysis to see how many results polarized vs nonpolarized for
+  parameter combinations of h_G (homophily), epislon, and gamma (translate).
+
+  This analysis supports Table 3 in Rabb & Cowen 2022.
+  
+  :param polarization_data: The result of polarization_analysis(multidata)
+  This contains 2 key dataframes -- one for polarizing results, one for
+  nonpolarizing ones
+  '''
+  # df = polarization_data['polarization_df']
+  zeta_cit_values = [0.25,0.5,0.75]
+  zeta_media_values = [0.25,0.5,0.75]
+  gamma_values = [1,2]
+  cit_memory_values = [1,2,10]
+  relative_proportions = {}
+  absolute_proportions = {}
+  for cit_memory in cit_memory_values:
+    for zeta_cit in zeta_cit_values:
+      for zeta_media in zeta_media_values:
+        for gamma in gamma_values:
+          partition_polarized = df.query(f'citizen_memory_len=={cit_memory} and zeta_citizen=={zeta_cit} and zeta_media=={zeta_media} and  translate=={gamma} and category=="polarized"')
+          partition_depolarized = df.query(f'citizen_memory_len=={cit_memory} and zeta_citizen=={zeta_cit} and zeta_media=={zeta_media} and translate=={gamma} and category=="depolarized"')
+          partition_remained_polarized = df.query(f'citizen_memory_len=={cit_memory} and zeta_citizen=={zeta_cit} and zeta_media=={zeta_media} and translate=={gamma} and category=="remained_polarized"')
+          partition_remained_nonpolarized = df.query(f'citizen_memory_len=={cit_memory} and zeta_citizen=={zeta_cit} and zeta_media=={zeta_media} and translate=={gamma} and category=="remained_nonpolarized"')
+          partition_all = df.query(f'citizen_memory_len=={cit_memory} and zeta_citizen=={zeta_cit} and zeta_media=={zeta_media} and translate=={gamma}')
+          if len(partition_all) == 0:
+            partition_all = pd.DataFrame({'empty': [1]})
+
+          # Use this line to report percent of results that are polarized
+          relative_proportions[f'{cit_memory},{zeta_cit},{zeta_media},{gamma}'] = {'polarized': len(partition_polarized) / len(partition_all), 'depolarized': len(partition_depolarized) / len(partition_all), 'remained_polarized': len(partition_remained_polarized) / len(partition_all), 'remained_nonpolarized': len(partition_remained_nonpolarized) / len(partition_all) }
+
+          # Use this line to report number of results that are polarized
+          absolute_proportions[f'{cit_memory},{zeta_cit},{zeta_media},{gamma}'] = {'polarized': len(partition_polarized) , 'depolarized': len(partition_depolarized) , 'remained_polarized': len(partition_remained_polarized) , 'remained_nonpolarized': len(partition_remained_nonpolarized), 'total': len(partition_all) }
+  relative_proportions['key'] = 'citizen_memory_len,zeta_cit,zeta_media,translate'
+  absolute_proportions['key'] = 'citizen_memory_len,zeta_cit,zeta_media,translate'
   return (relative_proportions, absolute_proportions)
 
 def static_polarization_results_by_fragmentation_exposure(df):
