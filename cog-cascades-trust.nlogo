@@ -539,6 +539,14 @@ to set-cognitive-contagion-params
     set cognitive-exponent 4
     set cognitive-translate t + 1
   ]
+  if cognitive-fn = "sigmoid-polarizing" [
+    set t ceiling (belief-resolution / 7)
+    set cognitive-scalar? false
+    set cognitive-exponent? true
+    set cognitive-translate? true
+    set cognitive-exponent 4
+    set cognitive-translate t + 1
+  ]
 end
 
 ;; Calculate the distances between the brain of cit and its neighbors.
@@ -800,6 +808,41 @@ to send-media-message-to-subscribers [ m message ]
   ]
 end
 
+to-report cognitive-contagion-dynamic [ braine ]
+  ;; TODO: Generalize for belief resolution != 7
+  let exponent 0
+  let translate 0
+  if cognitive-fn = "sigmoid-polarizing-stubborn" [
+    if (dict-value braine "A") = 0 or (dict-value braine "A") = 6 [
+      set exponent 4
+      set translate 0
+    ]
+    if (dict-value braine "A") = 1 or (dict-value braine "A") = 2 or (dict-value braine "A") = 5 or (dict-value braine "A") = 4 [
+      set exponent 3
+      set translate 1
+    ]
+    if (dict-value braine "A") = 3 [
+      set exponent 2
+      set translate 2
+    ]
+  ]
+  if cognitive-fn = "sigmoid-polarizing-mid" [
+    if (dict-value braine "A") = 0 or (dict-value braine "A") = 6 [
+      set exponent 3
+      set translate 1
+    ]
+    if (dict-value braine "A") = 1 or (dict-value braine "A") = 2 or (dict-value braine "A") = 5 or (dict-value braine "A") = 4 [
+      set exponent 2
+      set translate 2
+    ]
+    if (dict-value braine "A") = 3 [
+      set exponent 1
+      set translate 3
+    ]
+  ]
+  report (list exponent translate)
+end
+
 to-report cognitive-contagion-p-no-cit [ braine message ]
   let p 0
   let scalar 1
@@ -815,7 +858,14 @@ to-report cognitive-contagion-p-no-cit [ braine message ]
   if member? "linear" cognitive-fn [ set p 1 / (trans + (scalar * dist) ^ expon) ]
 
   ;; Good values for sigmoid: expon = -4, trans = -5 (works like old threshold function)
-  if member? "sigmoid" cognitive-fn [ set p (1 / (1 + (exp (expon * (dist - trans))))) ]
+  if member? "sigmoid" cognitive-fn [
+    if member? "sigmoid-polarizing" cognitive-fn [
+      let dynamic-vals cognitive-contagion-dynamic braine
+      set expon (item 0 dynamic-vals)
+      set trans (item 1 dynamic-vals)
+    ]
+    set p (1 / (1 + (exp (expon * (dist - trans)))))
+  ]
   ;        show (word "dist: " dist)
   ;        show (word self ": " (dict-value brain "A") " " message " (p=" p ")")
 
@@ -1452,7 +1502,11 @@ to-report cit-media-connections-by-zeta
 ;  show cit-memories
 
   if citizen-trust-fn = "average-bel" [
-    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+    ifelse member? cognitive-fn "sigmoid-polarizing" [
+      set py-function (word "curr_sigmoid_p_dynamic('" cognitive-fn "')")
+    ] [
+      set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+    ]
   ]
   let command (word "citizen_media_connections_by_zeta(" cit-beliefs "," cit-memories "," zeta-media "," cit-memory-len "," (length sort medias) "," (list-as-py-dict-rec topics true true) "," py-function ")")
 
@@ -1470,7 +1524,11 @@ to-report cit-cit-connections-by-zeta
 ;  show cit-memories
 
   if citizen-trust-fn = "average-bel" [
-    set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+    ifelse member? cognitive-fn "sigmoid-polarizing" [
+      set py-function (word "curr_sigmoid_p_dynamic('" cognitive-fn "')")
+    ] [
+      set py-function (word "curr_sigmoid_p(" cognitive-exponent "," cognitive-translate ")")
+    ]
   ]
   let command (word "citizen_citizen_connections_by_zeta(" cit-beliefs "," cit-memories "," zeta-cit "," (list-as-py-dict-rec topics true true) "," py-function ")")
 
@@ -2529,12 +2587,12 @@ NIL
 CHOOSER
 687
 859
-840
+887
 904
 cognitive-fn
 cognitive-fn
-"linear-gullible" "linear-stubborn" "linear-mid" "threshold-gullible" "threshold-mid" "threshold-stubborn" "sigmoid-gullible" "sigmoid-stubborn" "sigmoid-mid"
-7
+"linear-gullible" "linear-stubborn" "linear-mid" "threshold-gullible" "threshold-mid" "threshold-stubborn" "sigmoid-gullible" "sigmoid-stubborn" "sigmoid-mid" "sigmoid-polarizing-stubborn" "sigmoid-polarizing-mid"
+9
 
 SLIDER
 830
@@ -2661,7 +2719,7 @@ cognitive-exponent
 cognitive-exponent
 -10
 10
-1.0
+4.0
 1
 1
 NIL
@@ -3139,7 +3197,7 @@ CHOOSER
 institution-tactic
 institution-tactic
 "predetermined" "broadcast-brain" "appeal-mean" "appeal-mode" "appeal-median" "max-reach-no-chain"
-2
+1
 
 TEXTBOX
 28
@@ -3221,7 +3279,7 @@ media-ecosystem-n
 media-ecosystem-n
 0
 100
-50.0
+20.0
 1
 1
 NIL
@@ -3405,7 +3463,7 @@ SWITCH
 575
 citizen-citizen-trust?
 citizen-citizen-trust?
-1
+0
 1
 -1000
 
@@ -3416,7 +3474,7 @@ SWITCH
 536
 citizen-media-trust?
 citizen-media-trust?
-1
+0
 1
 -1000
 

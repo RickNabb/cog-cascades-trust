@@ -21,6 +21,39 @@ def create_nested_dirs(path):
       os.mkdir(f'{path_thus_far}/{d}')
     path_thus_far += f'/{d}'
 
+def curr_sigmoid_p_dynamic(cognitive_fn):
+  '''
+  A curried sigmoid function used to calculate probabilty of belief
+  given a certain distance. This way, it is initialized to use exponent
+  and translation, and can return a function that can be vectorized to
+  apply with one param -- message_distance.
+
+  :param exponent: An exponent factor in the sigmoid function.
+  :param translation: A translation factor in the sigmoid function.
+  '''
+  sigmoid_vals = {
+    # (exponent,translate)
+    'sigmoid-polarizing-stubborn': [
+      (4,0),
+      (3,1),
+      (3,1),
+      (2,2),
+      (3,1),
+      (3,1),
+      (4,0)
+    ],
+    'sigmoid-polarizing-mid': [
+      (3,1),
+      (2,2),
+      (2,2),
+      (1,3),
+      (2,2),
+      (2,2),
+      (3,1)
+    ]
+  }
+  return lambda bel: curr_sigmoid_p(sigmoid_vals[cognitive_fn][bel][0], sigmoid_vals[cognitive_fn][bel][1])
+
 def curr_sigmoid_p(exponent, translation):
   '''
   A curried sigmoid function used to calculate probabilty of belief

@@ -9,7 +9,7 @@ import os
 from enums import INSTITUTION_MESSAGING_TYPES, messaging_file_names
 from enums import INSTITUTION_ECOSYSTEM_TYPES
 from enums import eco_file_names
-from utils import curr_sigmoid_p, sigmoid_contagion_p
+from utils import curr_sigmoid_p, curr_sigmoid_p_dynamic, sigmoid_contagion_p
 
 """
 MESSAGES
@@ -280,6 +280,10 @@ def agent_trust_in_other_belief_func(agent_memory, agent_brain, topic_beliefs, b
   and the agent's beliefs. This should be a function that takes one input so
   it can be vectorized.
   '''
+  # TODO: Make this more general than just 'A'
+  if bel_func == curr_sigmoid_p_dynamic:
+    bel_func = bel_func(agent_brain['A'])
+
   bf_vectorized = np.vectorize(bel_func)
   topic_memories = { bel: np.array(list(map(lambda el: int(el), mem))) for (bel, mem) in agent_memory.items() if bel in topic_beliefs }
   topic_mem_diffs = { bel: bf_vectorized(abs(mem - agent_brain[bel])) for (bel,mem) in topic_memories.items() if len(mem) > 0 }
