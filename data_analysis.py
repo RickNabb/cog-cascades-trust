@@ -1541,7 +1541,7 @@ def dynamic_polarization_results_by_fragmentation_exposure(df):
           partition_all = pd.DataFrame({'empty': [1]})
 
         # Use this line to report percent of results that are polarized
-        relative_proportions[f'{zeta_cit},{zeta_media},{gamma}'] = {'polarized': len(partition_polarized) / len(partition_all), 'depolarized': len(partition_depolarized) / len(partition_all), 'remained_polarized': len(partition_remained_polarized) / len(partition_all), 'remained_nonpolarized': len(partition_remained_nonpolarized) / len(partition_all) }
+        relative_proportions[f'{zeta_cit},{zeta_media},{gamma}'] = {'polarized': round(100 * (len(partition_polarized) / len(partition_all))), 'depolarized': round(100 * (len(partition_depolarized) / len(partition_all))), 'remained_polarized': round(100 * (len(partition_remained_polarized) / len(partition_all))), 'remained_nonpolarized': round(100 * (len(partition_remained_nonpolarized) / len(partition_all))) }
 
         # Use this line to report number of results that are polarized
         absolute_proportions[f'{zeta_cit},{zeta_media},{gamma}'] = {'polarized': len(partition_polarized) , 'depolarized': len(partition_depolarized) , 'remained_polarized': len(partition_remained_polarized) , 'remained_nonpolarized': len(partition_remained_nonpolarized), 'total': len(partition_all) }
@@ -1578,7 +1578,7 @@ def static_polarization_results_by_fragmentation_exposure(df):
           partition_all = pd.DataFrame({'empty': [1]})
 
         # Use this line to report percent of results that are polarized
-        relative_proportions[f'{epsilon},{graph_type},{gamma}'] = {'polarized': len(partition_polarized) / len(partition_all), 'depolarized': len(partition_depolarized) / len(partition_all), 'remained_polarized': len(partition_remained_polarized) / len(partition_all), 'remained_nonpolarized': len(partition_remained_nonpolarized) / len(partition_all) }
+        relative_proportions[f'{epsilon},{graph_type},{gamma}'] = {'polarized': round(100 * (len(partition_polarized) / len(partition_all))), 'depolarized': round(100 * (len(partition_depolarized) / len(partition_all))), 'remained_polarized': round(100 * (len(partition_remained_polarized) / len(partition_all))), 'remained_nonpolarized': round(100 * (len(partition_remained_nonpolarized) / len(partition_all))) }
 
         # Use this line to report number of results that are polarized
         absolute_proportions[f'{epsilon},{graph_type},{gamma}'] = {'polarized': len(partition_polarized) , 'depolarized': len(partition_depolarized) , 'remained_polarized': len(partition_remained_polarized) , 'remained_nonpolarized': len(partition_remained_nonpolarized), 'total': len(partition_all) }
@@ -1613,7 +1613,7 @@ def polarization_results_by_tactic_distributions(df):
           partition_all = pd.DataFrame({'empty': [1]})
 
         # Use this line to report percent of results that are polarized
-        relative_proportions[f'{tactic},{cit_dist},{media_dist}'] = {'polarized': len(partition_polarized) / len(partition_all), 'depolarized': len(partition_depolarized) / len(partition_all), 'remained_polarized': len(partition_remained_polarized) / len(partition_all), 'remained_nonpolarized': len(partition_remained_nonpolarized) / len(partition_all) }
+        relative_proportions[f'{tactic},{cit_dist},{media_dist}'] = {'polarized': round(100 * (len(partition_polarized) / len(partition_all))), 'depolarized': round(100 * (len(partition_depolarized) / len(partition_all))), 'remained_polarized': round(100 * (len(partition_remained_polarized) / len(partition_all))), 'remained_nonpolarized': round(100 * (len(partition_remained_nonpolarized) / len(partition_all))) }
 
         # Use this line to report number of results that are polarized
         absolute_proportions[f'{tactic},{cit_dist},{media_dist}'] = {'polarized': len(partition_polarized) , 'depolarized': len(partition_depolarized) , 'remained_polarized': len(partition_remained_polarized) , 'remained_nonpolarized': len(partition_remained_nonpolarized), 'total': len(partition_all) }
