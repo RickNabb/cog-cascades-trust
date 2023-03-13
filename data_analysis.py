@@ -144,38 +144,47 @@ in the process. This should usually be the name of the chart in the NetLogo file
 def process_multi_chart_data(in_path, in_filename='percent-agent-beliefs'):
   props = []
   multi_data = []
+  model_params = {}
   print(f'process_multi_chart_data for {in_path}/{in_filename}')
-  if os.path.isdir(in_path):
-    for file in os.listdir(in_path):
-      if in_filename in file:
-        data = process_chart_data(f'{in_path}/{file}')
-        model_params = data[0]
-        props.append(data[1])
-        multi_data.append(data[2])
 
-    full_data_size = int(model_params['tick-end']) + 1
-    means = { key: [] for key in multi_data[0].keys() }
-    for data in multi_data:
-      for key in data.keys():
-        data_vector = np.array(data[key]['y']).astype('float32')
+  if not os.path.isdir(in_path):
+    print(f'ERROR: Path not found {in_path}')
+    return (-1, -1, -1)
+  if len(os.listdir(in_path)) == 0:
+    print(f'ERROR: Path contains no files')
+    return (-1,-1,-1)
 
-        if len(data_vector) != full_data_size:
-          # TODO: Need to do something here that reports the error
+  for file in os.listdir(in_path):
+    if in_filename in file:
+      data = process_chart_data(f'{in_path}/{file}')
+      model_params = data[0]
+      props.append(data[1])
+      multi_data.append(data[2])
+
+  full_data_size = int(model_params['tick-end']) + 1
+  means = { key: [] for key in multi_data[0].keys() }
+  for data in multi_data:
+    for key in data.keys():
+      data_vector = np.array(data[key]['y']).astype('float32')
+
+      if len(data_vector) != full_data_size:
+        if len(data_vector) > full_data_size:
+          data_vector = data_vector[:full_data_size]
+        elif abs(len(data_vector) - full_data_size) <= 5:
+          data_vector = np.append(data_vector, [ data_vector[-1] for i in range(abs(len(data_vector) - full_data_size)) ])
+        else:
           print(f'ERROR parsing multi chart data -- data length {len(data_vector)} did not equal number of ticks {full_data_size}')
           continue
 
-        if means[key] == []:
-          means[key] = data_vector
-        else:
-          means[key] = np.vstack([means[key], data_vector])
+      if means[key] == []:
+        means[key] = data_vector
+      else:
+        means[key] = np.vstack([means[key], data_vector])
 
-    final_props = props[0]
-    props_y_max = np.array([ float(prop['y max']) for prop in props ])
-    final_props['y max'] = props_y_max.max()
-    return (means, final_props, model_params)
-  else:
-    print(f'ERROR: Path not found {in_path}')
-    return (-1, -1, -1)
+  final_props = props[0]
+  props_y_max = np.array([ float(prop['y max']) for prop in props ])
+  final_props['y max'] = props_y_max.max()
+  return (means, final_props, model_params)
 
 def process_message_data(in_path, rand_id):
   '''
@@ -1100,19 +1109,20 @@ def get_static_param_sweep_high_N_multidata(path):
   cognitive_translate = ['0', '1', '2']
   epsilon = ['0','1','2']
   institution_tactic = ['broadcast-brain', 'appeal-mean']
-  media_ecosystem_n = ['20']
   media_ecosystem_dist = [ 'uniform', 'normal', 'polarized' ]
   init_cit_dist = ['normal', 'uniform', 'polarized']
   repetition = ['0']
   graph_type = ['barabasi-albert','ba-homophilic']
   ba_m = ['3']
-  process_exp_outputs(
+  measure_multidata = get_all_multidata(
     [cognitive_translate,institution_tactic,media_ecosystem_dist,init_cit_dist,epsilon,graph_type,ba_m,repetition],
+    ['translate','tactic','media_dist','cit_dist','epsilon','graph_type','ba_m','repetition'],
     {'percent-agent-beliefs': [PLOT_TYPES.LINE, PLOT_TYPES.STACK],
-    'polarization': [PLOT_TYPES.LINE],
-    'fragmentation': [PLOT_TYPES.LINE],
-    'homophily': [PLOT_TYPES.LINE]},
+    'polarization': [PLOT_TYPES.LINE]},
+    # 'fragmentation': [PLOT_TYPES.LINE],
+    # 'homophily': [PLOT_TYPES.LINE]},
     path)
+  return measure_multidata
 
 def get_low_res_low_media_multidata(path):
   cognitive_translate = ['0', '1', '2']
@@ -1154,6 +1164,12 @@ def get_low_res_sweep_multidata(path):
     'homophily': [PLOT_TYPES.LINE]},
     path)
   return measure_multidata
+
+def low_res_sweep_total_analysis(data_dir, data_file):
+  return dynamic_model_total_analysis(data_dir, data_file, ['translate','tactic','media_dist','media_n','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition'])
+
+def low_res_low_media_total_analysis(data_dir, data_file):
+  return dynamic_model_total_analysis(data_dir, data_file, ['translate','media_dist','tactic','citizen_dist','zeta_citizen','zeta_media','citizen_memory_len','repetition'])
 
 '''
 ================
@@ -1236,7 +1252,7 @@ def dynamic_model_total_analysis(data_dir, data_file, params):
     json.dump(polarization_results, f)
   print('finished polarization analysis')
  
-  polarization_mean_df = polarization_data['polarization_df']
+  # polarization_mean_df = polarization_data['polarization_df']
   polarization_all_df = polarization_data['polarization_all_df']
 
   print('starting polarization stability analysis...')
@@ -1245,24 +1261,24 @@ def dynamic_model_total_analysis(data_dir, data_file, params):
     json.dump(polarization_stability_data['diff_parts'], f)
   print('finished polarization stability analysis')
 
-  stability_df = polarization_stability_data['stability']
+  # stability_df = polarization_stability_data['stability']
 
-  print('starting polarization analysis across repetitions...')
-  polarization_data_across_runs = polarization_analysis_across_repetitions(polarization_mean_df, multidata, polarization_slope, polarization_intercept)
-  with open(f'{data_dir}/polarization-across-reps-results.json','w') as f:
-    polarization_results = { category: len(polarization_data_across_runs[category]) for category in polarization_categories }
-    json.dump(polarization_results, f)
-  print('finished polarization analysis across repetitions')
+  # print('starting polarization analysis across repetitions...')
+  # polarization_data_across_runs = polarization_analysis_across_repetitions(polarization_mean_df, multidata, polarization_slope, polarization_intercept)
+  # with open(f'{data_dir}/polarization-across-reps-results.json','w') as f:
+  #   polarization_results = { category: len(polarization_data_across_runs[category]) for category in polarization_categories }
+  #   json.dump(polarization_results, f)
+  # print('finished polarization analysis across repetitions')
 
-  print('starting polarization stability analysis across repetitions...')
-  polarization_stability_data_across_runs = polarization_stability_across_repetitions(stability_df, multidata)
-  with open(f'{data_dir}/polarization-stability-across-reps-diff-parts.json','w') as f:
-    json.dump(polarization_stability_data_across_runs['diff_parts'], f)
-  print('finished polarization stability analysis across repetitions')
+  # print('starting polarization stability analysis across repetitions...')
+  # polarization_stability_data_across_runs = polarization_stability_across_repetitions(stability_df, multidata)
+  # with open(f'{data_dir}/polarization-stability-across-reps-diff-parts.json','w') as f:
+  #   json.dump(polarization_stability_data_across_runs['diff_parts'], f)
+  # print('finished polarization stability analysis across repetitions')
 
   print('polarization analyses done')
 
-  polarization_df_across_runs = polarization_data_across_runs['polarization_df']
+  # polarization_df_across_runs = polarization_data_across_runs['polarization_df']
 
   print('starting polarization results by parameter breakdown...')
   (fe_relative, fe_absolute) = dynamic_polarization_results_by_fragmentation_exposure(polarization_all_df)
@@ -1273,16 +1289,17 @@ def dynamic_model_total_analysis(data_dir, data_file, params):
   write_dynamic_polarization_by_fragmentation_exposure(fe_absolute, data_dir, 'polarization-by-frag-zeta-absolute-LATEX.tex')
   write_dynamic_polarization_by_fragmentation_exposure(fe_relative, data_dir, 'polarization-by-frag-zeta-relative-LATEX.tex')
 
-  (fe_relative_runs, fe_absolute_runs) = dynamic_polarization_results_by_fragmentation_exposure(polarization_df_across_runs)
-  with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-relative.json','w') as f:
-    json.dump(fe_relative_runs, f)
-  with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-absolute.json','w') as f:
-    json.dump(fe_absolute_runs, f)
-  write_dynamic_polarization_by_fragmentation_exposure(fe_absolute_runs, data_dir, 'polarization-across-reps-by-frag-zeta-absolute-LATEX.tex')
-  write_dynamic_polarization_by_fragmentation_exposure(fe_relative_runs, data_dir, 'polarization-across-reps-by-frag-zeta-relative-LATEX.tex')
-  print('finished breakdown by fragmentation and exposure')
+  # (fe_relative_runs, fe_absolute_runs) = dynamic_polarization_results_by_fragmentation_exposure(polarization_df_across_runs)
+  # with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-relative.json','w') as f:
+  #   json.dump(fe_relative_runs, f)
+  # with open(f'{data_dir}/polarization-across-reps-by-frag-zeta-absolute.json','w') as f:
+  #   json.dump(fe_absolute_runs, f)
+  # write_dynamic_polarization_by_fragmentation_exposure(fe_absolute_runs, data_dir, 'polarization-across-reps-by-frag-zeta-absolute-LATEX.tex')
+  # write_dynamic_polarization_by_fragmentation_exposure(fe_relative_runs, data_dir, 'polarization-across-reps-by-frag-zeta-relative-LATEX.tex')
+  # print('finished breakdown by fragmentation and exposure')
 
-  tactic_dist_df = polarization_all_df[(polarization_all_df['translate'] == 1) | (polarization_all_df['translate'] == 2)]
+  tactic_dist_df = polarization_all_df
+  # tactic_dist_df = polarization_all_df[(polarization_all_df['translate'] == 1) | (polarization_all_df['translate'] == 2)]
   (td_relative, td_absolute) = polarization_results_by_tactic_distributions(tactic_dist_df)
   with open(f'{data_dir}/polarization-all-by-tactic-dist-relative.json','w') as f:
     json.dump(td_relative, f)
@@ -1847,11 +1864,12 @@ def polarization_stability_analysis(multidata, slope_threshold, intercept_thresh
     remained_nonpolarized = []
     for run_data in data['0']:
       model = LinearRegression().fit(x, run_data)
-      if model.coef_[0] >= slope_threshold:
+      category = determine_polarization_categories(run_data, model, slope_threshold, intercept_threshold)
+      if category == 'polarized':
         polarizing.append(run_data)
-      elif model.coef_[0] <= slope_threshold * -1:
+      elif category == 'depolarized':
         depolarizing.append(run_data)
-      elif model.intercept_ >= intercept_threshold:
+      elif category == 'remained_polarized':
         remained_polarized.append(run_data)
       else:
         remained_nonpolarized.append(run_data)
@@ -1862,15 +1880,7 @@ def polarization_stability_analysis(multidata, slope_threshold, intercept_thresh
     remain_nonpolarized_ratio = len(remained_nonpolarized) / num_runs
 
     model = LinearRegression().fit(x, polarization_means[param_combo])
-    category = ''
-    if model.coef_[0] >= slope_threshold:
-      category = 'polarized'
-    elif model.coef_[0] <= slope_threshold * -1:
-      category = 'depolarized'
-    elif model.intercept_ >= intercept_threshold:
-      category = 'remained_polarized'
-    else:
-      category = 'remained_nonpolarized'
+    category = determine_polarization_categories(polarization_means[param_combo], model, slope_threshold, intercept_threshold)
 
     category_to_ratio = {
       'polarized': polarizing_ratio,
@@ -1948,24 +1958,33 @@ def polarization_analysis_across_repetitions(polarization_df, multidata, slope_t
       across_runs = polarization_data_across_repetitions[combo_without_run]
       data = across_runs['data'].mean()
       model = LinearRegression().fit(x, data)
-      category = ''
-      if model.coef_[0] >= slope_threshold:
-        category = 'polarized'
-      elif model.coef_[0] <= slope_threshold * -1:
-        category = 'depolarized'
-      elif model.intercept_ >= intercept_threshold:
-        category = 'remained_polarized'
-      else:
-        category = 'remained_nonpolarized'
+      category = determine_polarization_categories(data, model, slope_threshold, intercept_threshold)
       df.loc[len(df.index)] = list(combo_without_run) + [category,model.intercept_,model.coef_[0],data.var(),data[0],data[-1],data[-1]-data[0],max(data),data]
 
-  polarizing = df[df['lr-slope'] >= slope_threshold]
-  depolarizing = df[df['lr-slope'] <= slope_threshold*-1]
-  same = df[(df['lr-slope'] > slope_threshold*-1) & (df['lr-slope'] < slope_threshold)]
-  remained_polarized = same[same['lr-intercept'] >= intercept_threshold]
-  remained_nonpolarized = same[same['lr-intercept'] < intercept_threshold]
+  polarizing = df[df['category'] == 'polarized']
+  depolarizing = df[df['category'] == 'depolarized']
+  remained_polarized = df[df['category'] == 'remained_polarized']
+  remained_nonpolarized = df[df['category'] == 'remained_nonpolarized']
 
-  return { 'polarization_df': df, 'polarized': polarizing, 'depolarized': depolarizing, 'remained_polarized': remained_polarized, 'remained_nonpolarized': remained_nonpolarized}
+  return { 'polarization_df': df, 'polarized': polarizing, 'depolarized': depolarizing, 'remained_polarized': remained_polarized, 'remained_nonpolarized': remained_nonpolarized }
+
+def determine_polarization_categories(data, model, slope_threshold, intercept_threshold):
+  category = ''
+  if model.coef_[0] >= slope_threshold:
+    category = 'polarized'
+  elif model.coef_[0] <= slope_threshold * -1:
+    category = 'depolarized'
+  else:
+  # elif model.coef_[0] < slope_threshold and model.coef_[0] > slope_threshold * -1:
+    if data[0] >= intercept_threshold and model.intercept_ < intercept_threshold: 
+      category = 'depolarized'
+    elif data[0] < intercept_threshold and model.intercept_ >= intercept_threshold:
+      category = 'polarized'
+    elif data[0] >= intercept_threshold and model.intercept_ >= intercept_threshold:
+      category = 'remained_polarized'
+    else:
+      category = 'remained_nonpolarized'
+  return category
 
 def polarization_analysis(multidata,slope_threshold,intercept_threshold):
   '''
@@ -2000,37 +2019,26 @@ def polarization_analysis(multidata,slope_threshold,intercept_threshold):
     for i in range(len(data['0'])):
       run_data = data['0'][i]
       model = LinearRegression().fit(x, run_data)
-      category = ''
-      if model.coef_[0] >= slope_threshold:
-        category = 'polarized'
-      elif model.coef_[0] <= slope_threshold * -1:
-        category = 'depolarized'
-      elif model.intercept_ >= intercept_threshold:
-        category = 'remained_polarized'
-      else:
-        category = 'remained_nonpolarized'
+      category = determine_polarization_categories(run_data, model, slope_threshold, intercept_threshold)
       all_df.loc[len(all_df.index)] = list(props[0]) + [i,category,model.intercept_,model.coef_[0],run_data[0],run_data[-1],run_data[-1]-run_data[0],max(run_data),run_data]
 
   for (props, data) in polarization_means.items():
     model = LinearRegression().fit(x, data)
-    category = ''
-    if model.coef_[0] >= slope_threshold:
-      category = 'polarized'
-    elif model.coef_[0] <= slope_threshold * -1:
-      category = 'depolarized'
-    elif model.intercept_ >= intercept_threshold:
-      category = 'remained_polarized'
-    else:
-      category = 'remained_nonpolarized'
+    category = determine_polarization_categories(data, model, slope_threshold, intercept_threshold)
     df.loc[len(df.index)] = list(props[0]) + [category,model.intercept_,model.coef_[0],polarization_vars[props],data[0],data[-1],data[-1]-data[0],max(data),data]
 
-  polarizing = all_df[all_df['lr-slope'] >= slope_threshold]
-  depolarizing = all_df[all_df['lr-slope'] <= slope_threshold*-1]
-  same = all_df[(all_df['lr-slope'] > slope_threshold*-1) & (all_df['lr-slope'] < slope_threshold)]
-  remained_polarized = same[same['lr-intercept'] >= intercept_threshold]
-  remained_nonpolarized = same[same['lr-intercept'] < intercept_threshold]
+  # polarizing = all_df[all_df['lr-slope'] >= slope_threshold]
+  # depolarizing = all_df[all_df['lr-slope'] <= slope_threshold*-1]
+  # same = all_df[(all_df['lr-slope'] > slope_threshold*-1) & (all_df['lr-slope'] < slope_threshold)]
+  # remained_polarized = same[same['lr-intercept'] >= intercept_threshold]
+  # remained_nonpolarized = same[same['lr-intercept'] < intercept_threshold]
 
-  return { 'polarization_all_df': all_df, 'polarization_df': df, 'polarized': polarizing, 'depolarized': depolarizing, 'remained_polarized': remained_polarized, 'remained_nonpolarized': remained_nonpolarized}
+  polarizing = all_df[all_df['category'] == 'polarized']
+  depolarizing = all_df[all_df['category'] == 'depolarized']
+  remained_polarized = all_df[all_df['category'] == 'remained_polarized']
+  remained_nonpolarized = all_df[all_df['category'] == 'remained_nonpolarized']
+
+  return { 'polarization_all_df': all_df, 'polarization_df': df, 'polarized': polarizing, 'depolarized': depolarizing, 'remained_polarized': remained_polarized, 'remained_nonpolarized': remained_nonpolarized }
 
 def fragmentation_analysis(multidata):
   '''
@@ -2109,10 +2117,25 @@ def correlation_values_for_polarized(polarization_df, correlation_df):
   print(f'ph correlation: mean {p_df_with_corr["ph_correlation"].mean()} var {p_df_with_corr["ph_correlation"].var()}')
   return p_df_with_corr
 
-  # for row in polarized.iterrows():
-  #   row_data = row[1]
-  #   query = f'translate=={row_data["translate"]} and tactic=="{row_data["tactic"]}" and media_dist=="{row_data["media_dist"]}" and citizen_dist=="{row_data["citizen_dist"]}" and zeta_citizen=={row_data["zeta_citizen"]} and zeta_media=={row_data["zeta_media"]} and citizen_memory_len=={row_data["citizen_memory_len"]} and repetition=={row_data["repetition"]} and run=={row_data["run"]}'
-  #   correlation_row = correlation_df.query(query)
+def correlation_polarization_merge(polarization_df, correlation_df):
+  # 'category','lr-intercept','lr-slope','start','end','delta','max','data'
+  merge_columns = list_subtract(polarization_df.columns, ['category','lr-intercept','lr-slope','start','end','delta','max','data'])
+  p_df_with_corr = polarization_df.merge(correlation_df, on=merge_columns)
+  return p_df_with_corr
+
+
+def plot_pol_frag_homo_correlation(correlation_df, out_path):
+  polarization_categories = ['polarized','depolarized','remained_polarized','remained_nonpolarized']
+  for category in polarization_categories:
+    frag_data = correlation_df[correlation_df['category'] == category]['pf_correlation']
+    homo_data = correlation_df[correlation_df['category'] == category]['ph_correlation']
+    plt.figure()
+    plt.scatter(frag_data,homo_data, s=1)
+    plt.xlabel("Polarization x Fragmentation Correlation")
+    plt.ylabel("Polarization x Homophily Correlation")
+    plt.title("Per-Run Correlations of Polarization with Fragmentation & Homophily")
+    plt.savefig(f'{out_path}/pol-frag-homo-correlation-scatter_{category}.png')
+    plt.close()
 
 def correlation_polarization_fragmentation_means(polarization_df, fragmentation_df, multidata, out_path):
   multidata_keys_minus_params = list(set(multidata.keys()) - set(['params']))
